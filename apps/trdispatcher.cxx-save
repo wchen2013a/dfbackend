@@ -1,0 +1,115 @@
+/**
+ * @file trdispatcher.cxx
+ *
+ * Developer(s) of this DAQ application have yet to replace this line with a brief description of the application.
+ *
+ * This is part of the DUNE DAQ Application Framework, copyright 2020.
+ * Licensing/copyright details are in the COPYING file that you should have
+ * received with this code.
+ */
+
+#include "logging/Logging.hpp"
+
+#include "nlohmann/json.hpp"
+
+#include <fstream>
+#include <iostream>
+#include <filesystem>
+#include <vector>
+#include <regex>
+#include <string>
+#include <cstring>
+
+using namespace dunedaq;
+
+int
+main(int argc, char* argv[])
+{
+    logging::Logging().setup();
+
+    auto hdf5_files_to_transfer = std::vector<std::filesystem::path> {};
+    auto hdf5_files_waiting = std::vector<std::filesystem::path> {};
+    auto hdf5_files_already_transfer = std::vector<nlohmann::json> {};
+
+    const std::string json_file="hdf5_files_list.json";
+    nlohmann::json hdf5_files_json;
+    std::ifstream file_in(json_file);
+    file_in >> hdf5_files_json;
+    file_in.close();
+
+    auto hdf5_files1=hdf5_files_json["hdf5_files"];
+    for (auto hdf5_file : hdf5_files1)
+    {
+        std::cout<<"hdf5_file "<<hdf5_file["hdf5_file"].get<std::string>()<<"\n";
+        //std::string hdf5_file1 = hdf5_file["hdf5_file"].get<std::string()>;
+        hdf5_files_already_transfer.push_back(hdf5_file["hdf5_file"]);
+    }
+
+    const std::filesystem::path daq_storage_dir{"/lcg/storage19/test-area/dune-v4-spack-integration2/sourcecode/daqconf/config/"};
+    std::regex ext1(".hdf5");
+
+    std::string ext=".hdf5";
+
+    for (auto const& entry : std::filesystem::directory_iterator{daq_storage_dir})
+    {
+       //std::cout << entry.path().filename().string() << '\n';
+       //std::cout << entry.path().extension().string() << '\n';
+
+       std::string file_ext = entry.path().extension().string();
+
+       if (file_ext == ".hdf5") 
+       {
+           for (auto item : hdf5_files_already_transfer )
+           {
+
+               if (item != entry.path().filename().string()){
+                    hdf5_files_to_transfer.push_back(entry.path());
+                    hdf5_files_json["hdf5_file"]="coko_file.hdf5";
+               }
+           }
+          std::cout << "found list of hdf5 files to datafilter: "<<entry.path().filename().string() << '\n';
+       }
+       if (file_ext == ".writing")
+       {
+          hdf5_files_waiting.push_back(entry.path());
+          std::cout << "found waiting list :"<<entry.path().filename().string() << '\n';
+
+       }
+       //std::smatch m;
+       //std::regex_search(entry.path().filename(),m,ext1);
+       //std::cout <<m[0]<<m[1]<<m[2]<<"\n";
+
+       //std::string str1=entry.path().filename();
+       //const auto it = std::search(str1.begin(),str1.end(),ext.begin(),ext.end());
+       //if (std::strcmp(it,ext)) {
+       //if (it == ext.end()) 
+       //{
+      //     std::cout <<entry.path().filename() <<"\n";
+      //     std::cout <<"======>"<<it[0]<<"\n";
+      // }
+
+       //std::cout<<m<<"\n";
+
+       // if (entry.filename)
+
+    } 
+
+    std::ofstream file_out("test.json");
+    nlohmann::json j,new_entry;
+    j = hdf5_files_json;
+    new_entry["hdf5_file"]="coko.hdf5";
+    //j.insert(j1.begin(),j1.end());
+    j["hdf5_files"].push_back(new_entry);
+
+    //j["hdf5_files"]["hdf5_file"]="coko.hdf5";
+    file_out<< std::setw(4)<<j <<std::endl;
+
+    file_out.close();
+
+    for (auto file : hdf5_files_to_transfer) 
+    {
+        std::cout <<file <<"\n";
+    }
+
+    return 0;
+}
