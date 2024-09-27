@@ -19,8 +19,10 @@
 #include <vector>
 
 #include "boost/program_options.hpp"
+#include "dfmessages/TriggerRecord_serialization.hpp"
 #include "logging/Logging.hpp"
 #include "nlohmann/json.hpp"
+#include "serialization/Serialization.hpp"
 
 using namespace dunedaq;
 using namespace trdispatcher;
@@ -140,7 +142,8 @@ int main(int argc, char* argv[]) {
                << "run " << run;
         if (config.num_apps > 1) publisher->init(run);
         // publisher->send(run, forked_pids[0]);
-        publisher->send(run, 0);
+        publisher->send_tr(run, 0);
+        // publisher->send_tr_from_hdf5file(run, 0);
         TLOG() << "TR Dispatcher " << config.my_id << ": "
                << "run " << run << " complete.";
     }

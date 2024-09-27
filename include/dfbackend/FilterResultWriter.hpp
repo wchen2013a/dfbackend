@@ -41,6 +41,7 @@ struct FilterResultWriterConfig {
     std::string server = "localhost";
 
     std::string info_file_base = "FilterResultWriter";
+    std::string output_h5_filename = "/opt/tmp/chen/h5_test.hdf5";
     std::string session_name = "iomanager : FilterResultWriter";
     size_t num_apps = 1;
     size_t num_connections_per_group = 1;
@@ -164,6 +165,19 @@ struct FilterResultWriter {
 };
 
 struct PublisherTest {
+    PublisherTest() {
+        setenv("DUNEDAQ_PARTITION", "IOManager_t", 0);
+
+        std::cout << "from PublisherTest";
+    }
+    ~PublisherTest() { IOManager::get()->reset(); }
+
+    explicit PublisherTest(FilterResultWriterConfig c) : config(c) {}
+    PublisherTest(PublisherTest const&) = default;
+    PublisherTest(PublisherTest&&) = default;
+    PublisherTest& operator=(PublisherTest const&) = default;
+    PublisherTest& operator=(PublisherTest&&) = default;
+
     struct PublisherInfo {
         size_t conn_id;
         size_t group_id;
@@ -219,8 +233,6 @@ struct PublisherTest {
     uint32_t nsamples = 64;
 
     std::string path_header1;
-
-    explicit PublisherTest(FilterResultWriterConfig c) : config(c) {}
 
     void init(size_t run_number) {
         TLOG_DEBUG(5) << "Getting init sender";
@@ -508,7 +520,8 @@ struct PublisherTest {
                             tr->get_fragments_ref().at(0)->get_run_number();
                         int file_index = 0;
 
-                        TLOG() << "run_number " << run_number << "\n";
+                        TLOG() << "run_number " << run_number
+                               << ", trigger number: " << trigger_number;
                         info->msgs_received++;
                         last_received = std::chrono::steady_clock::now();
 
@@ -518,19 +531,14 @@ struct PublisherTest {
                                    << info->get_connection_name(config);
                             std::string app_name = "test";
                             std::string ofile_name =
-                                "test" +
-                                std::to_string(info->msgs_received.load()) +
-                                ".hdf5";
+                                "/opt/tmp/chen/test" +
+                                std::to_string(trigger_number) + ".hdf5";
                             // create the file
                             std::unique_ptr<HDF5RawDataFile> h5file_ptr(
                                 new HDF5RawDataFile(
                                     ofile_name, run_number, file_index,
                                     app_name, flp_json_in, srcid_geoid_map,
-                                    ".writing",  // optional: suffix to use for
-                                    // files being written
-                                    HighFive::File::Overwrite));  // optional:
-                                                                  // overwrite
-                            // existing file
+                                    ".writing", HighFive::File::Overwrite));
 
                             h5file_ptr->write(*tr);
                             h5file_ptr.reset();
