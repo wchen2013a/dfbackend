@@ -41,6 +41,7 @@ struct FilterResultWriterConfig {
     std::string server = "localhost";
 
     std::string info_file_base = "FilterResultWriter";
+    std::string odir = "/opt/tmp/chen";
     std::string output_h5_filename = "/opt/tmp/chen/h5_test.hdf5";
     std::string session_name = "iomanager : FilterResultWriter";
     size_t num_apps = 1;
@@ -138,6 +139,22 @@ struct FilterResultWriterConfig {
             connections.emplace_back(Connection{
                 ConnectionId{"TR_tracking" + std::to_string(sub), "init_t"},
                 conn_addr, ConnectionType::kSendRecv});
+        }
+
+        //      for (size_t sub = 0; sub < num_apps; ++sub) {
+        for (size_t sub = 0; sub < 3; ++sub) {
+            auto port = 23000 + sub;
+            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            TLOG() << "Adding control connection "
+                   << "trdispatcher" + std::to_string(sub) << " with address "
+                   << conn_addr;
+
+            connections.emplace_back(
+                // Connection{ ConnectionId{ "TR_tracking"+std::to_string(sub),
+                // "init_t" }, conn_addr, ConnectionType::kPubSub });
+                Connection{ConnectionId{"trdispatcher" + std::to_string(sub),
+                                        "init_t"},
+                           conn_addr, ConnectionType::kSendRecv});
         }
 
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
@@ -531,8 +548,10 @@ struct PublisherTest {
                                    << info->get_connection_name(config);
                             std::string app_name = "test";
                             std::string ofile_name =
-                                "/opt/tmp/chen/test" +
+                                config.odir + "/" + config.output_h5_filename +
                                 std::to_string(trigger_number) + ".hdf5";
+                            TLOG() << "Writing the TR to " << ofile_name;
+
                             // create the file
                             std::unique_ptr<HDF5RawDataFile> h5file_ptr(
                                 new HDF5RawDataFile(
@@ -594,6 +613,20 @@ struct PublisherTest {
 
         subscribers.clear();
         TLOG_DEBUG(5) << "receive() done";
+    }
+
+    void send_next_tr(size_t run_number, pid_t subscriber_pid) {
+        bool handshake_done = false;
+
+        std::atomic<unsigned int> sent_cnt = 0;
+
+        auto sender_next_tr =
+            dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
+                "trdispatcher1");
+
+        std::chrono::milliseconds timeout(100);
+        dunedaq::datafilter::Handshake sent_t1("trdispatcher1");
+        sender_next_tr->send(std::move(sent_t1), timeout);
     }
 
     void send(size_t run_number, pid_t subscriber_pid) {

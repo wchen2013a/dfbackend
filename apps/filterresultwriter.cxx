@@ -24,11 +24,15 @@ int main(int argc, char* argv[]) {
     bool help_requested = false;
     namespace po = boost::program_options;
     po::options_description desc("Filter Result Writer");
-    desc.add_options()("ofilename,o",
-                       po::value<std::string>(&config.output_h5_filename)
+    desc.add_options()("odir,d",
+                       po::value<std::string>(&config.odir)
                            ->default_value(config.output_h5_filename),
-                       "output filename ")(
-        "help,h", po::bool_switch(&help_requested), "For help.");
+                       "output directory")(
+        "ofilename,o",
+        po::value<std::string>(&config.output_h5_filename)
+            ->default_value(config.output_h5_filename),
+        "output filename ")("help,h", po::bool_switch(&help_requested),
+                            "For help.");
 
     try {
         po::variables_map vm;
@@ -57,7 +61,7 @@ int main(int argc, char* argv[]) {
                << "run " << run;
         if (config.num_apps > 1) publisher->init(run);
         // publisher->send(run, forked_pids[0]);
-        // publisher->send(run, 0);
+        publisher->send_next_tr(run, 0);
         publisher->receive_tr(run);
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run << " complete.";

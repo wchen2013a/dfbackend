@@ -21,8 +21,8 @@
 #include "boost/program_options.hpp"
 #include "dfmessages/TriggerRecord_serialization.hpp"
 #include "logging/Logging.hpp"
-#include "nlohmann/json.hpp"
-#include "serialization/Serialization.hpp"
+// #include "nlohmann/json.hpp"
+// #include "serialization/Serialization.hpp"
 
 using namespace dunedaq;
 using namespace trdispatcher;
@@ -34,58 +34,15 @@ int main(int argc, char* argv[]) {
 
     dunedaq::trdispatcher::TRDispatcherConfig config;
     bool help_requested = false;
+    bool is_hdf5file = false;
     namespace po = boost::program_options;
-    po::options_description desc("Dataflow emulator");
-    desc.add_options()("use_connectivity_service,c",
-                       po::bool_switch(&config.use_connectivity_service),
-                       "enable the ConnectivityService in IOManager")(
-        "num_apps,N",
-        po::value<size_t>(&config.num_apps)->default_value(config.num_apps),
-        "Number of applications to start")(
-        "num_groups,g",
-        po::value<size_t>(&config.num_groups)->default_value(config.num_groups),
-        "Number of connection groups")(
-        "num_connections,n",
-        po::value<size_t>(&config.num_connections_per_group)
-            ->default_value(config.num_connections_per_group),
-        "Number of connections to register and use in each group")(
-        "port,p", po::value<int>(&config.port)->default_value(config.port),
-        "port to connect to on configuration server")(
-        "server,s",
-        po::value<std::string>(&config.server)->default_value(config.server),
-        "Configuration server to connect to")(
-        "num_messages,m",
-        po::value<size_t>(&config.num_messages)
-            ->default_value(config.num_messages),
-        "Number of messages to send on each connection")(
-        "message_size_kb,z",
-        po::value<size_t>(&config.message_size_kb)
-            ->default_value(config.message_size_kb),
-        "Size of each message, in KB")(
-        "num_runs,r",
-        po::value<size_t>(&config.num_runs)->default_value(config.num_runs),
-        "Number of times to clear the sender and send all messages")(
-        "publish_interval,i",
-        po::value<int>(&config.publish_interval)
-            ->default_value(config.publish_interval),
-        "Interval, in ms, for ConfigClient to re-publish connection info")(
-        "send_interval,I",
-        po::value<size_t>(&config.send_interval_ms)
-            ->default_value(config.send_interval_ms),
-        "Interval, in ms, for Publishers to send messages")(
-        "output_h5_filename,o",
-        po::value<std::string>(&config.output_h5_filename)
-            ->default_value(config.output_h5_filename),
-        "Base name for output info file (will have _sender.csv or "
-        "_receiver.csv appended)")(
-        "input_h5_filename,f",
-        po::value<std::string>(&config.input_h5_filename)
-            ->default_value(config.input_h5_filename),
-        "Input hdf5 file")("session",
-                           po::value<std::string>(&config.session_name)
-                               ->default_value(config.session_name),
-                           "Name of this DAQ session")(
-        "help,h", po::bool_switch(&help_requested), "Print this help message");
+    po::options_description desc("TR Dispatcher");
+    desc.add_options()("ifilename,f",
+                       po::value<std::string>(&config.input_h5_filename)
+                           ->default_value(config.input_h5_filename),
+                       "input filename ")(
+        "hdf5,h5", po::bool_switch(&is_hdf5file), "toggle to hdf5 file")(
+        "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {
         po::variables_map vm;
@@ -135,15 +92,21 @@ int main(int argc, char* argv[]) {
     config.configure_iomanager();
 
     auto publisher =
-        std::make_unique<dunedaq::trdispatcher::PublisherTest>(config);
+        std::make_unique<dunedaq::trdispatcher::TRDispatcher>(config);
 
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "TR Dispatcher" << config.my_id << ": "
                << "run " << run;
         if (config.num_apps > 1) publisher->init(run);
         // publisher->send(run, forked_pids[0]);
-        publisher->send_tr(run, 0);
-        // publisher->send_tr_from_hdf5file(run, 0);
+        if (is_hdf5file) {
+            // publisher->send_tr_from_hdf5file(run, 0);
+            publisher->receive(run, 0, true);
+        } else {
+            // publisher->send_tr(run, 0);
+            publisher->receive(run, 0, false);
+        }
+
         TLOG() << "TR Dispatcher " << config.my_id << ": "
                << "run " << run << " complete.";
     }
