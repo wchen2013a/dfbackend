@@ -393,103 +393,6 @@ struct PublisherTest {
         return srcid_geoid_map.get<hdf5rawdatafile::SrcIDGeoIDMap>();
     }
 
-    //    void receive_tr(size_t run_number1) {
-    //        if (config.next_tr) {
-    //            auto next_tr_sender =
-    //                dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
-    //                    "trwriter0");
-    //            TLOG() << "wait for trwriter response.";
-    //            dunedaq::datafilter::Handshake q("start_trwriter");
-    //            next_tr_sender->send(std::move(q), Sender::s_block);
-    //        }
-    //
-    //        TLOG_DEBUG(5) << "Setting up SubscriberInfo objects";
-    //        for (size_t group = 0; group < config.num_groups; ++group) {
-    //            //
-    //            subscribers.push_back(std::make_shared<SubscriberInfo>(group));
-    //            for (size_t conn = 0; conn < config.num_connections_per_group;
-    //                 ++conn) {
-    //                subscribers.push_back(
-    //                    std::make_shared<SubscriberInfo>(group, conn));
-    //            }
-    //        }
-    //
-    //        std::atomic<std::chrono::steady_clock::time_point> last_received =
-    //            std::chrono::steady_clock::now();
-    //        TLOG_DEBUG(5) << "Adding callbacks for each subscriber";
-    //        std::for_each(
-    //            std::execution::par_unseq, std::begin(subscribers),
-    //            std::end(subscribers), [=](std::shared_ptr<SubscriberInfo>
-    //            info) {
-    //                auto before_receiver = std::chrono::steady_clock::now();
-    //                auto receiver = dunedaq::get_iom_receiver<
-    //                    std::unique_ptr<dunedaq::daqdataformats::TriggerRecord>>(
-    //                    config.get_connection_name(config.my_id,
-    //                    info->group_id,
-    //                                               info->conn_id));
-    //                auto after_receiver = std::chrono::steady_clock::now();
-    //                info->get_receiver_time =
-    //                    std::chrono::duration_cast<std::chrono::milliseconds>(
-    //                        after_receiver - before_receiver);
-    //            });
-    //
-    //        //                      auto before_receiver =
-    //        //                      std::chrono::steady_clock::now(); auto
-    //        //                      receiver
-    //        //                      =
-    //        //
-    //        dunedaq::get_iom_receiver<dunedaq::datafilter::Data>(info->get_connection_name(config));
-    //        //                      auto after_receiver =
-    //        //                      std::chrono::steady_clock::now();
-    //        //                      receiver->add_callback(recv_proc);
-    //        //                      auto after_callback =
-    //        //                      std::chrono::steady_clock::now();
-    //        //                      info->get_receiver_time =
-    //        //
-    //        std::chrono::duration_cast<std::chrono::milliseconds>(after_receiver
-    //        //                        - before_receiver);
-    //        //                      info->add_callback_time =
-    //        //
-    //        std::chrono::duration_cast<std::chrono::milliseconds>(after_callback
-    //        //                        - after_receiver);
-    //        //                    });
-    //
-    //        //       if (config.next_tr) {
-    //        //            auto next_tr_sender =
-    //        //
-    //        dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>("trwriter2");
-    //        //            TLOG()<<"send wait for next instruction";
-    //        //            dunedaq::datafilter::Handshake q("wait");
-    //        //            next_tr_sender->send(std::move(q), Sender::s_block);
-    //        //        }
-    //
-    //        TLOG_DEBUG(5) << "Starting wait loop for receives to complete";
-    //    bool all_done = false;
-    //    while (!all_done) {
-    //        size_t recvrs_done = 0;
-    //        for (auto& sub : subscribers) {
-    //            if (sub->complete.load()) recvrs_done++;
-    //        }
-    //        TLOG_DEBUG(6) << "Done: " << recvrs_done << ", expected: "
-    //                      << config.num_groups *
-    //                      config.num_connections_per_group;
-    //        all_done =
-    //            recvrs_done >= config.num_groups *
-    //            config.num_connections_per_group;
-    //        if (!all_done) std::this_thread::sleep_for(1ms);
-    //    }
-    //    TLOG_DEBUG(5) << "Removing callbacks";
-    //    for (auto& info : subscribers) {
-    //        auto receiver =
-    //        dunedaq::get_iom_receiver<dunedaq::datafilter::Data>(
-    //            info->get_connection_name(config));
-    //        receiver->remove_callback();
-    //    }
-    //
-    //    subscribers.clear();
-    //    TLOG_DEBUG(5) << "receive() done";
-    //}
-
     void receive_tr(size_t run_number1) {
         if (config.next_tr) {
             auto next_tr_sender =
@@ -509,12 +412,13 @@ struct PublisherTest {
                     std::make_shared<SubscriberInfo>(group, conn));
             }
         }
-        // convert file_params to json, allows for easy comp later
+        // the layout can be obtained from the tranfered TR.
         dunedaq::hdf5libs::hdf5filelayout::data_t flp_json_in;
         dunedaq::hdf5libs::hdf5filelayout::to_json(flp_json_in,
                                                    create_file_layout_params());
 
-        // create src-geo id map
+        // create src-geo id map; this should be replaced the correct src-geo
+        // map from the transfered TR.
         auto srcid_geoid_map = create_srcid_geoid_map();
 
         std::atomic<std::chrono::steady_clock::time_point> last_received =
