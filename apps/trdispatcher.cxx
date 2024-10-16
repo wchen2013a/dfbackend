@@ -19,29 +19,28 @@
 #include <vector>
 
 #include "boost/program_options.hpp"
-#include "dfmessages/TriggerRecord_serialization.hpp"
+// #include "dfmessages/TriggerRecord_serialization.hpp"
 #include "logging/Logging.hpp"
-// #include "nlohmann/json.hpp"
-// #include "serialization/Serialization.hpp"
 
 using namespace dunedaq;
 using namespace trdispatcher;
 
 int main(int argc, char* argv[]) {
     logging::Logging().setup();
-    // dunedaq::trdispatcher::TRDispatcher trd;
-    // trd.init();
 
     dunedaq::trdispatcher::TRDispatcherConfig config;
     bool help_requested = false;
     bool is_hdf5file = false;
     namespace po = boost::program_options;
     po::options_description desc("TR Dispatcher");
-    desc.add_options()("ifilename,f",
-                       po::value<std::string>(&config.input_h5_filename)
-                           ->default_value(config.input_h5_filename),
-                       "input filename ")(
-        "hdf5,h5", po::bool_switch(&is_hdf5file), "toggle to hdf5 file")(
+    desc.add_options()(
+        "server,s",
+        po::value<std::string>(&config.server)->default_value(config.server),
+        "server")("ifilename,f",
+                  po::value<std::string>(&config.input_h5_filename)
+                      ->default_value(config.input_h5_filename),
+                  "input filename ")("hdf5,h5", po::bool_switch(&is_hdf5file),
+                                     "toggle to hdf5 file")(
         "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {
@@ -91,20 +90,18 @@ int main(int argc, char* argv[]) {
            << "Configuring IOManager";
     config.configure_iomanager();
 
-    auto publisher =
+    auto trdispatcher =
         std::make_unique<dunedaq::trdispatcher::TRDispatcher>(config);
 
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "TR Dispatcher" << config.my_id << ": "
                << "run " << run;
-        if (config.num_apps > 1) publisher->init(run);
-        // publisher->send(run, forked_pids[0]);
+        if (config.num_apps > 1) trdispatcher->init(run);
+        // trdispatcher->send(run, forked_pids[0]);
         if (is_hdf5file) {
-            // publisher->send_tr_from_hdf5file(run, 0);
-            publisher->receive(run, 0, true);
+            trdispatcher->receive(run, 0, true);
         } else {
-            // publisher->send_tr(run, 0);
-            publisher->receive(run, 0, false);
+            trdispatcher->receive(run, 0, false);
         }
 
         TLOG() << "TR Dispatcher " << config.my_id << ": "
@@ -113,7 +110,7 @@ int main(int argc, char* argv[]) {
 
     TLOG() << "TR Dispatcher" << config.my_id << ": "
            << "Cleaning up";
-    publisher.reset(nullptr);
+    trdispatcher.reset(nullptr);
 
     dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "TR Dispatcher " << config.my_id << ": "

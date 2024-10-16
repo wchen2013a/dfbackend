@@ -629,8 +629,9 @@ struct TRDispatcher {
                 if (msg.msg_id == "trdispatcher0") {
                     ++received_cnt;
                 }
-                TLOG() << "Receive next instruction from filter orchestrator: "
-                       << msg.msg_id;
+                TLOG()
+                    << "Received next TR instruction from filter orchestrator: "
+                    << msg.msg_id;
             };
 
         cb_receiver->add_callback(str_receiver_cb);
