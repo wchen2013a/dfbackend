@@ -16,18 +16,21 @@
 #include "boost/program_options.hpp"
 
 using namespace dunedaq;
-using namespace filterresultwriter;
+using namespace datafilter;
 
 int main(int argc, char* argv[]) {
-    dunedaq::filterresultwriter::FilterResultWriterConfig config;
+    dunedaq::datafilter::FilterResultWriterConfig config;
 
     bool help_requested = false;
     namespace po = boost::program_options;
     po::options_description desc("Filter Result Writer");
-    desc.add_options()("odir,d",
-                       po::value<std::string>(&config.odir)
-                           ->default_value(config.output_h5_filename),
-                       "output directory")(
+    desc.add_options()(
+        "server,s",
+        po::value<std::string>(&config.server)->default_value(config.server),
+        "server")("odir,d",
+                  po::value<std::string>(&config.odir)
+                      ->default_value(config.output_h5_filename),
+                  "output directory")(
         "ofilename,o",
         po::value<std::string>(&config.output_h5_filename)
             ->default_value(config.output_h5_filename),
@@ -53,23 +56,23 @@ int main(int argc, char* argv[]) {
            << "Configuring IOManager";
     config.configure_iomanager();
 
-    auto publisher =
-        std::make_unique<dunedaq::filterresultwriter::PublisherTest>(config);
+    auto filterresultwriters =
+        std::make_unique<dunedaq::datafilter::FilterResultWriter>(config);
 
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run;
-        if (config.num_apps > 1) publisher->init(run);
-        // publisher->send(run, forked_pids[0]);
-        publisher->send_next_tr(run, 0);
-        publisher->receive_tr(run);
+        if (config.num_apps > 1) filterresultwriters->init(run);
+        // filterresultwriters->send(run, forked_pids[0]);
+        filterresultwriters->send_next_tr(run, 0);
+        filterresultwriters->receive_tr(run);
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run << " complete.";
     }
 
     TLOG() << "Filter Result Writer" << config.my_id << ": "
            << "Cleaning up";
-    publisher.reset(nullptr);
+    filterresultwriters.reset(nullptr);
 
     dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "Filter Result Writer " << config.my_id << ": "

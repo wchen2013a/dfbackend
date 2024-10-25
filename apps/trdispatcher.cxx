@@ -19,16 +19,15 @@
 #include <vector>
 
 #include "boost/program_options.hpp"
-// #include "dfmessages/TriggerRecord_serialization.hpp"
 #include "logging/Logging.hpp"
 
 using namespace dunedaq;
-using namespace trdispatcher;
+using namespace datafilter;
 
 int main(int argc, char* argv[]) {
     logging::Logging().setup();
 
-    dunedaq::trdispatcher::TRDispatcherConfig config;
+    dunedaq::datafilter::TRDispatcherConfig config;
     bool help_requested = false;
     bool is_hdf5file = false;
     namespace po = boost::program_options;
@@ -91,7 +90,7 @@ int main(int argc, char* argv[]) {
     config.configure_iomanager();
 
     auto trdispatcher =
-        std::make_unique<dunedaq::trdispatcher::TRDispatcher>(config);
+        std::make_unique<dunedaq::datafilter::TRDispatcher>(config);
 
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "TR Dispatcher" << config.my_id << ": "

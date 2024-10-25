@@ -1,3 +1,6 @@
+#ifndef DFBACKEND_INCLUDE_TRDISPATCHER_HPP_
+#define DFBACKEND_INCLUDE_TRDISPATCHER_HPP_
+
 #include <sys/wait.h>
 
 #include <algorithm>
@@ -21,18 +24,18 @@ using namespace dunedaq::detdataformats;
 using namespace dunedaq::iomanager;
 
 namespace dunedaq {
-namespace trdispatcher {
+namespace datafilter {
 
 using trigger_record_ptr_t =
     std::unique_ptr<dunedaq::daqdataformats::TriggerRecord>;
 
 struct TRDispatcherConfig {
     bool use_connectivity_service = false;  // unsed for now
-    int port = 5000;
-    std::string server = "localhost";
+    int port = 15500;
+    std::string server = "127.0.0.1";
 
     std::string info_file_base = "trdispatcher";
-    std::string session_name = "trdispatcher";
+    std::string session_name = "trdispatcher test run";
     size_t num_apps = 1;
     size_t num_connections_per_group = 1;
     size_t num_groups = 1;
@@ -41,7 +44,7 @@ struct TRDispatcherConfig {
     size_t num_runs = 2;
     size_t my_id = 0;
     size_t send_interval_ms = 100;
-    int publish_interval = 10000;
+    int publish_interval = 1000;
     bool next_tr = false;
 
     size_t seq_number;
@@ -84,10 +87,15 @@ struct TRDispatcherConfig {
         int first_byte = conn_id + 2;    // 2-254
         int second_byte = group_id + 1;  // 1-254
         int third_byte = app_id + 1;     // 1-254
+        std::string conn_addr;
 
-        std::string conn_addr = "tcp://127." + std::to_string(third_byte) +
-                                "." + std::to_string(second_byte) + "." +
-                                std::to_string(first_byte) + ":15500";
+        if (server == "127.0.0.1") {
+            conn_addr = "tcp://127." + std::to_string(third_byte) + "." +
+                        std::to_string(second_byte) + "." +
+                        std::to_string(first_byte) + ":" + std::to_string(port);
+        } else {
+            conn_addr = "tcp://" + server + ":" + std::to_string(port);
+        }
 
         return conn_addr;
     }
@@ -104,51 +112,54 @@ struct TRDispatcherConfig {
         Queues_t queues;
         Connections_t connections;
 
-        for (size_t group = 0; group < num_groups; ++group) {
-            for (size_t conn = 0; conn < num_connections_per_group; ++conn) {
-                auto conn_addr = get_connection_ip(my_id, group, conn);
-                TLOG() << "Adding connection with id "
-                       << get_connection_name(my_id, group, conn)
-                       << " and address " << conn_addr;
+        auto conn_addr = "tcp://" + server + ":" + std::to_string(port);
+        connections.emplace_back(
+            Connection{ConnectionId{"conn_A0_G0_C0_", "TriggerRecord"},
+                       conn_addr, ConnectionType::kSendRecv});
 
-                connections.emplace_back(Connection{
-                    ConnectionId{get_connection_name(my_id, group, conn),
-                                 // "data_t"},
-                                 "TriggerRecord"},
-                    conn_addr, ConnectionType::kPubSub});
-            }
-        }
+        //        for (size_t group = 0; group < num_groups; ++group) {
+        //            for (size_t conn = 0; conn < num_connections_per_group;
+        //            ++conn) {
+        //                auto conn_addr = get_connection_ip(my_id, group,
+        //                conn); TLOG() << "Adding connection with id "
+        //                       << get_connection_name(my_id, group, conn)
+        //                       << " and address " << conn_addr;
+        //
+        //                connections.emplace_back(Connection{
+        //                    ConnectionId{get_connection_name(my_id, group,
+        //                    conn),
+        //                                 // "data_t"},
+        //                                 "TriggerRecord"},
+        //                    conn_addr, ConnectionType::kPubSub});
+        //            }
+        //        }
 
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 13000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "TR_tracking" + std::to_string(sub) << " with address "
                    << conn_addr;
 
-            connections.emplace_back(
-                // Connection{ ConnectionId{ "TR_tracking"+std::to_string(sub),
-                // "init_t" }, conn_addr, ConnectionType::kPubSub });
-                Connection{
-                    ConnectionId{"TR_tracking" + std::to_string(sub), "init_t"},
-                    conn_addr, ConnectionType::kSendRecv});
+            connections.emplace_back(Connection{
+                ConnectionId{"TR_tracking" + std::to_string(sub), "init_t"},
+                conn_addr, ConnectionType::kSendRecv});
         }
 
-        //      for (size_t sub = 0; sub < num_apps; ++sub) {
+        // for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 23000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "trdispatcher" + std::to_string(sub) << " with address "
                    << conn_addr;
 
-            connections.emplace_back(
-                // Connection{ ConnectionId{ "TR_tracking"+std::to_string(sub),
-                // "init_t" }, conn_addr, ConnectionType::kPubSub });
-                Connection{ConnectionId{"trdispatcher" + std::to_string(sub),
-                                        "init_t"},
-                           conn_addr, ConnectionType::kSendRecv});
+            connections.emplace_back(Connection{
+                ConnectionId{"trdispatcher" + std::to_string(sub), "init_t"},
+                conn_addr, ConnectionType::kSendRecv});
         }
 
         IOManager::get()->configure(
@@ -201,7 +212,7 @@ struct TRDispatcher {
             : conn_id(conn), group_id(group) {}
     };
 
-    std::vector<std::shared_ptr<TRDispatcherInfo>> publishers;
+    std::vector<std::shared_ptr<TRDispatcherInfo>> trdispatchers;
     TRDispatcherConfig config;
 
     size_t run_number = 53;
@@ -259,7 +270,7 @@ struct TRDispatcher {
     }
 
     // generate a dummy test trigger record to be send to datafilter
-    dunedaq::trdispatcher::trigger_record_ptr_t create_trigger_record(
+    dunedaq::datafilter::trigger_record_ptr_t create_trigger_record(
         uint64_t trig_num) {
         // test setup our dummy_data
         std::vector<char> dummy_vector(fragment_size);
@@ -403,7 +414,7 @@ struct TRDispatcher {
 
         }  // end loop over elements
 
-        dunedaq::trdispatcher::trigger_record_ptr_t temp = std::move(tr);
+        dunedaq::datafilter::trigger_record_ptr_t temp = std::move(tr);
         return temp;
     }
 
@@ -411,27 +422,38 @@ struct TRDispatcher {
     void send_tr(size_t dataflow_run_number, pid_t subscriber_pid) {
         std::ostringstream ss;
 
-        if (config.next_tr) {
-            auto init_receiver =
-                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
-                    "TR_tracking2");
-        }
+        auto init_sender =
+            dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
+                "TR_tracking2");
+
+        dunedaq::datafilter::Handshake sent_t1("next_tr");
+        init_sender->send(std::move(sent_t1), Sender::s_block);
+
+        //        if (config.next_tr) {
+        //            auto init_receiver =
+        //                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
+        //                    "TR_tracking2");
+        //        }
         std::unordered_map<int, std::set<size_t>> completed_receiver_tracking;
         std::mutex tracking_mutex;
 
-        for (size_t group = 0; group < config.num_groups; ++group) {
-            for (size_t conn = 0; conn < config.num_connections_per_group;
-                 ++conn) {
-                auto info = std::make_shared<TRDispatcherInfo>(group, conn);
-                // auto info = std::make_shared<TRDispatcherInfo>(0, 0);
-                publishers.push_back(info);
-            }
-        }
+        //        for (size_t group = 0; group < config.num_groups; ++group)
+        //        {
+        //            for (size_t conn = 0; conn <
+        //            config.num_connections_per_group;
+        //                 ++conn) {
+        //                auto info =
+        //                std::make_shared<TRDispatcherInfo>(group, conn);
+        auto info = std::make_shared<TRDispatcherInfo>(0, 0);
+        trdispatchers.push_back(info);
+        //            }
+        //        }
 
         TLOG_DEBUG(7) << "Getting publisher objects for each connection";
         std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers), [=](std::shared_ptr<TRDispatcherInfo> info) {
+            std::execution::par_unseq, std::begin(trdispatchers),
+            std::end(trdispatchers),
+            [=](std::shared_ptr<TRDispatcherInfo> info) {
                 auto before_sender = std::chrono::steady_clock::now();
 
                 info->sender = dunedaq::get_iom_sender<
@@ -446,8 +468,8 @@ struct TRDispatcher {
 
         TLOG_DEBUG(7) << "Starting publish threads";
         std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers),
+            std::execution::par_unseq, std::begin(trdispatchers),
+            std::end(trdispatchers),
             [=, &completed_receiver_tracking,
              &tracking_mutex](std::shared_ptr<TRDispatcherInfo> info) {
                 info->send_thread.reset(new std::thread(
@@ -458,7 +480,7 @@ struct TRDispatcher {
                         while (!complete_received) {
                             TLOG() << "Sender message: generate trigger "
                                       "record";
-                            dunedaq::trdispatcher::trigger_record_ptr_t
+                            dunedaq::datafilter::trigger_record_ptr_t
                                 temp_record(create_trigger_record(1));
 
                             TLOG() << "Start sending  trigger record";
@@ -486,7 +508,7 @@ struct TRDispatcher {
             });
 
         TLOG_DEBUG(7) << "Joining send threads";
-        for (auto& sender : publishers) {
+        for (auto& sender : trdispatchers) {
             sender->send_thread->join();
             sender->send_thread.reset(nullptr);
         }
@@ -497,11 +519,18 @@ struct TRDispatcher {
                                pid_t subscriber_pid) {
         std::ostringstream ss;
 
-        if (config.next_tr) {
-            auto init_receiver =
-                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
-                    "TR_tracking2");
-        }
+        auto init_sender =
+            dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
+                "TR_tracking2");
+
+        dunedaq::datafilter::Handshake sent_t1("next_tr");
+        init_sender->send(std::move(sent_t1), Sender::s_block);
+
+        //        if (config.next_tr) {
+        //            auto init_receiver =
+        //                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
+        //                    "TR_tracking2");
+        //        }
 
         std::unordered_map<int, std::set<size_t>> completed_receiver_tracking;
         std::mutex tracking_mutex;
@@ -511,14 +540,15 @@ struct TRDispatcher {
                  ++conn) {
                 auto info = std::make_shared<TRDispatcherInfo>(group, conn);
                 // auto info = std::make_shared<TRDispatcherInfo>(0, 0);
-                publishers.push_back(info);
+                trdispatchers.push_back(info);
             }
         }
 
         TLOG_DEBUG(7) << "Getting publisher objects for each connection";
         std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers), [=](std::shared_ptr<TRDispatcherInfo> info) {
+            std::execution::par_unseq, std::begin(trdispatchers),
+            std::end(trdispatchers),
+            [=](std::shared_ptr<TRDispatcherInfo> info) {
                 auto before_sender = std::chrono::steady_clock::now();
                 //                    info->sender =
                 //                    dunedaq::get_iom_sender<dunedaq::datafilter::Data>(
@@ -534,8 +564,8 @@ struct TRDispatcher {
 
         TLOG_DEBUG(7) << "Starting publish threads";
         std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers),
+            std::execution::par_unseq, std::begin(trdispatchers),
+            std::end(trdispatchers),
             [=, &completed_receiver_tracking,
              &tracking_mutex](std::shared_ptr<TRDispatcherInfo> info) {
                 info->send_thread.reset(new std::thread(
@@ -610,7 +640,7 @@ struct TRDispatcher {
             });
 
         TLOG_DEBUG(7) << "Joining send threads";
-        for (auto& sender : publishers) {
+        for (auto& sender : trdispatchers) {
             sender->send_thread->join();
             sender->send_thread.reset(nullptr);
         }
@@ -621,23 +651,24 @@ struct TRDispatcher {
         bool handshake_done = false;
         std::atomic<unsigned int> received_cnt = 0;
 
-        auto cb_receiver =
-            dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
-                "trdispatcher0");
-        std::function<void(dunedaq::datafilter::Handshake)> str_receiver_cb =
-            [&](dunedaq::datafilter::Handshake msg) {
-                if (msg.msg_id == "trdispatcher0") {
-                    ++received_cnt;
-                }
-                TLOG()
-                    << "Received next TR instruction from filter orchestrator: "
-                    << msg.msg_id;
-            };
-
-        cb_receiver->add_callback(str_receiver_cb);
-        while (!handshake_done) {
-            if (received_cnt == 1) handshake_done = true;
-        }
+        // auto cb_receiver =
+        //     dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
+        //         "trdispatcher0");
+        //         std::function<void(dunedaq::datafilter::Handshake)>
+        //         str_receiver_cb =
+        //             [&](dunedaq::datafilter::Handshake msg) {
+        //                 if (msg.msg_id == "trdispatcher0") {
+        //                     ++received_cnt;
+        //                 }
+        //                 TLOG() << "Received next TR instruction from filter "
+        //                           "orchestrator: "
+        //                        << msg.msg_id;
+        //             };
+        //
+        //         cb_receiver->add_callback(str_receiver_cb);
+        //         while (!handshake_done) {
+        //             if (received_cnt == 1) handshake_done = true;
+        //         }
         if (is_hdf5file) {
             send_tr_from_hdf5file(dataflow_run_number1, subscriber_pid);
         } else {
@@ -654,18 +685,19 @@ struct TRDispatcher {
     //        completed_receiver_tracking; std::mutex tracking_mutex;
     //
     //        for (size_t group = 0; group < config.num_groups; ++group) {
-    //            for (size_t conn = 0; conn < config.num_connections_per_group;
+    //            for (size_t conn = 0; conn <
+    //            config.num_connections_per_group;
     //                 ++conn) {
     //                auto info = std::make_shared<TRDispatcherInfo>(group,
-    //                conn); publishers.push_back(info);
+    //                conn); trdispatchers.push_back(info);
     //            }
     //        }
     //
-    //        TLOG_DEBUG(7) << "Getting publisher objects for each connection";
-    //        std::for_each(
-    //            std::execution::par_unseq, std::begin(publishers),
-    //            std::end(publishers), [=](std::shared_ptr<TRDispatcherInfo>
-    //            info)
+    //        TLOG_DEBUG(7) << "Getting publisher objects for each
+    //        connection"; std::for_each(
+    //            std::execution::par_unseq, std::begin(trdispatchers),
+    //            std::end(trdispatchers),
+    //            [=](std::shared_ptr<TRDispatcherInfo> info)
     //            {
     //                auto before_sender = std::chrono::steady_clock::now();
     //                //                    info->sender =
@@ -683,18 +715,21 @@ struct TRDispatcher {
     //
     //        TLOG_DEBUG(7) << "Starting publish threads";
     //        std::for_each(
-    //            std::execution::par_unseq, std::begin(publishers),
-    //            std::end(publishers),
+    //            std::execution::par_unseq, std::begin(trdispatchers),
+    //            std::end(trdispatchers),
     //            [=, &completed_receiver_tracking,
-    //             &tracking_mutex](std::shared_ptr<TRDispatcherInfo> info) {
+    //             &tracking_mutex](std::shared_ptr<TRDispatcherInfo> info)
+    //             {
     //                info->send_thread.reset(new std::thread(
-    //                    [=, &completed_receiver_tracking, &tracking_mutex]() {
+    //                    [=, &completed_receiver_tracking,
+    //                    &tracking_mutex]() {
     //                        bool complete_received = false;
     //
     //                        std::ostringstream ss;
     //                        std::this_thread::sleep_for(100ms);
     //                        while (!complete_received) {
-    //                            TLOG() << "Sender message: generate trigger "
+    //                            TLOG() << "Sender message: generate
+    //                            trigger "
     //                                      "record";
     //
     //                            std::string input_h5_filename1 =
@@ -708,8 +743,9 @@ struct TRDispatcher {
     //                            records = h5_file.get_all_record_ids();
     //                            //                            ss <<
     //                            //                            "\nNumber of
-    //                            //                            records: " <<
-    //                            //                            records.size();
+    //                            //                            records: "
+    //                            <<
+    //                            // records.size();
     //                            //                            if
     //                            // (records.empty())
     //                            //                            {
@@ -718,14 +754,17 @@ struct TRDispatcher {
     //                            //                                TRIGGER
     //                            //                                RECORDS
     //                            //                                FOUND";
-    //                            //                                TLOG() <<
-    //                            //                                ss.str();
+    //                            //                                TLOG()
+    //                            <<
+    //                            // ss.str();
     //                            //                                exit(0);
     //                            //                            }
-    //                            //                            auto first_rec
+    //                            //                            auto
+    //                            first_rec
     //                            //                            =
     //                            // *(records.begin());
-    //                            //                            auto last_rec
+    //                            //                            auto
+    //                            last_rec
     //                            //                            = *(
     //                            // std::next(records.begin(),
     //                            // records.size()
@@ -734,14 +773,14 @@ struct TRDispatcher {
     //                            //                            ss <<
     //                            //                            "\n\tFirst
     //                            //                            record: " <<
-    //                            //                            first_rec.first
+    //                            // first_rec.first
     //                            //                            << ","
     //                            //                               <<
     //                            // first_rec.second;
     //                            //                            ss <<
     //                            //                            "\n\tLast
     //                            //                            record: " <<
-    //                            //                            last_rec.first
+    //                            // last_rec.first
     //                            //                            << ","
     //                            //                               <<
     //                            // last_rec.second;
@@ -758,7 +797,8 @@ struct TRDispatcher {
     //                            //                                =
     //                            //
     //                            h5_file.get_record_header_dataset_path(rid);
-    //                            //                                auto tr =
+    //                            //                                auto tr
+    //                            =
     //                            // h5_file.get_trigger_record(rid);
     //                            //
     //                            //                                /* auto
@@ -770,16 +810,16 @@ struct TRDispatcher {
     //                            // "\ntsize_bytes:
     //                            //                                   " <<
     //                            // tr_size_bytes;
-    //                            //                                   TLOG()
+    //                            // TLOG()
     //                            //                                   <<
-    //                            //                                   ss.str();
+    //                            // ss.str();
     //                            // ss.str("");
     //                            //                                */
     //    //                                //
     //    //                                SERIALIZE
     //    //                                auto bytes
     //    //                                =
-    //    //                                dunedaq::serialization::serialize(
+    //    // dunedaq::serialization::serialize(
     //    //                                    tr,
     //    // dunedaq::serialization::kMsgPack);
     //    //                                //
@@ -797,7 +837,7 @@ struct TRDispatcher {
     //    //
     //    //                                info->sender->try_send(
     //    //                                    std::move(deserialized),
-    //    //                                    std::chrono::milliseconds(100));
+    //    // std::chrono::milliseconds(100));
     //    //                            }
     //
     //    TLOG() << "Start sending  trigger record";
@@ -847,7 +887,7 @@ struct TRDispatcher {
     //});
     //
     // TLOG_DEBUG(7) << "Joining send threads";
-    // for (auto& sender : publishers) {
+    // for (auto& sender : trdispatchers) {
     //    sender->send_thread->join();
     //    sender->send_thread.reset(nullptr);
     //}
@@ -871,15 +911,16 @@ struct TRDispatcher {
                     auto info = std::make_shared<TRDispatcherInfo>(group,
        conn);
                     // auto info = std::make_shared<TRDispatcherInfo>(0,
-       0); publishers.push_back(info);
+       0); trdispatchers.push_back(info);
                 }
             }
 
             TLOG() << "Getting publisher objects for each connection";
             std::for_each(
-                std::execution::par_unseq, std::begin(publishers),
-                std::end(publishers), [=](std::shared_ptr<TRDispatcherInfo>
-       info) { auto before_sender = std::chrono::steady_clock::now();
+                std::execution::par_unseq, std::begin(trdispatchers),
+                std::end(trdispatchers),
+       [=](std::shared_ptr<TRDispatcherInfo> info) { auto before_sender =
+       std::chrono::steady_clock::now();
 
                     info->sender = dunedaq::get_iom_sender<
                         dunedaq::datafilter::Data>(
@@ -911,8 +952,8 @@ struct TRDispatcher {
 
             TLOG() << "Starting publish threads";
             std::for_each(
-                std::execution::par_unseq, std::begin(publishers),
-                std::end(publishers),
+                std::execution::par_unseq, std::begin(trdispatchers),
+                std::end(trdispatchers),
                 [=, &completed_receiver_tracking,
                  &tracking_mutex](std::shared_ptr<TRDispatcherInfo> info) {
                     info->send_thread.reset(new std::thread(
@@ -1117,7 +1158,7 @@ struct TRDispatcher {
                 });
 
             TLOG_DEBUG(7) << "Joining send threads";
-            for (auto& sender : publishers) {
+            for (auto& sender : trdispatchers) {
                 sender->send_thread->join();
                 sender->send_thread.reset(nullptr);
             }
@@ -1125,7 +1166,9 @@ struct TRDispatcher {
     */
 };
 
-}  // namespace trdispatcher
+}  // namespace datafilter
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Data, "data_t");
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Handshake, "init_t");
 }  // namespace dunedaq
+
+#endif  // DFBACKEND_INCLUDE_TRDISPATCHER_HPP_

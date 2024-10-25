@@ -9,6 +9,9 @@
  * received with this code.
  */
 
+#ifndef DFBACKEND_INCLUDE_FILTERORCHESTRATOR_HPP_
+#define DFBACKEND_INCLUDE_FILTERORCHESTRATOR_HPP_
+
 #include <sys/wait.h>
 
 #include <algorithm>
@@ -22,15 +25,14 @@
 using namespace dunedaq::iomanager;
 
 namespace dunedaq {
-namespace filterorchestrator {
+namespace datafilter {
 
 struct FilterOrchestratorConfig {
     bool use_connectivity_service = false;  // unsed for now
     int port = 5000;
-    std::string server = "localhost";
+    std::string server = "127.0.0.1";
 
-    std::string info_file_base = "FilterOrchestrator";
-    std::string session_name = "iomanager : FilterOrchestrator";
+    std::string session_name = "FilterOrchestrator test run";
     size_t num_apps = 1;
     size_t num_connections_per_group = 1;
     size_t num_groups = 1;
@@ -39,7 +41,7 @@ struct FilterOrchestratorConfig {
     size_t num_runs = 2;
     size_t my_id = 0;
     size_t send_interval_ms = 100;
-    int publish_interval = 10000;
+    int publish_interval = 1000;
     bool next_tr = false;
 
     size_t seq_number;
@@ -76,10 +78,15 @@ struct FilterOrchestratorConfig {
         int first_byte = conn_id + 2;    // 2-254
         int second_byte = group_id + 1;  // 1-254
         int third_byte = app_id + 1;     // 1 - 254
+        std::string conn_addr;
 
-        std::string conn_addr = "tcp://127." + std::to_string(third_byte) +
-                                "." + std::to_string(second_byte) + "." +
-                                std::to_string(first_byte) + ":15500";
+        if (server == "127.0.0.1") {
+            conn_addr = "tcp://127." + std::to_string(third_byte) + "." +
+                        std::to_string(second_byte) + "." +
+                        std::to_string(first_byte) + ":" + std::to_string(port);
+        } else {
+            conn_addr = "tcp://" + server + ":" + std::to_string(port);
+        }
 
         return conn_addr;
     }
@@ -113,7 +120,8 @@ struct FilterOrchestratorConfig {
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 13000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "TR_tracking" + std::to_string(sub) << " with address "
                    << conn_addr;
@@ -129,7 +137,8 @@ struct FilterOrchestratorConfig {
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 23000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "trdispatcher" + std::to_string(sub) << " with address "
                    << conn_addr;
@@ -172,7 +181,7 @@ struct FilterOrchestrator {
             : conn_id(conn), group_id(group) {}
     };
 
-    std::vector<std::shared_ptr<FilterOrchestratorInfo>> publishers;
+    std::vector<std::shared_ptr<FilterOrchestratorInfo>> filterorchestrators;
     FilterOrchestratorConfig config;
 
     uint16_t data3[200000000];
@@ -233,14 +242,14 @@ struct FilterOrchestrator {
         //      ++conn) {
         // auto info = std::make_shared<FilterOrchestratorInfo>(group, conn);
         auto info = std::make_shared<FilterOrchestratorInfo>(0, 0);
-        publishers.push_back(info);
+        filterorchestrators.push_back(info);
         //      }
         //    }
 
         TLOG_DEBUG(7) << "Getting publisher objects for each connection";
         std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers),
+            std::execution::par_unseq, std::begin(filterorchestrators),
+            std::end(filterorchestrators),
             [=](std::shared_ptr<FilterOrchestratorInfo> info) {
                 auto before_sender = std::chrono::steady_clock::now();
                 info->sender =
@@ -257,8 +266,8 @@ struct FilterOrchestrator {
 
         TLOG_DEBUG(7) << "Starting publish threads";
         std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers),
+            std::execution::par_unseq, std::begin(filterorchestrators),
+            std::end(filterorchestrators),
             [=, &completed_receiver_tracking,
              &tracking_mutex](std::shared_ptr<FilterOrchestratorInfo> info) {
                 info->send_thread.reset(new std::thread(
@@ -316,7 +325,7 @@ struct FilterOrchestrator {
             });
 
         TLOG_DEBUG(7) << "Joining send threads";
-        for (auto& sender : publishers) {
+        for (auto& sender : filterorchestrators) {
             sender->send_thread->join();
             sender->send_thread.reset(nullptr);
         }
@@ -360,6 +369,8 @@ struct FilterOrchestrator {
     }
 };
 
-}  // namespace filterorchestrator
+}  // namespace datafilter
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Handshake, "init_t");
 }  // namespace dunedaq
+
+#endif  // DFBACKEND_INCLUDE_FILTERORCHESTRATOR_HPP_

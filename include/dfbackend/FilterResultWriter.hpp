@@ -9,6 +9,9 @@
  * received with this code.
  */
 
+#ifndef DFBACKEND_INCLUDE_FILTERRESULTWRITER_HPP_
+#define DFBACKEND_INCLUDE_FILTERRESULTWRITER_HPP_
+
 #include <sys/wait.h>
 
 #include <algorithm>
@@ -33,11 +36,11 @@ using namespace dunedaq::hdf5libs;
 using dataobj_t = nlohmann::json;
 
 namespace dunedaq {
-namespace filterresultwriter {
+namespace datafilter {
 
 struct FilterResultWriterConfig {
     bool use_connectivity_service = false;  // unsed for now
-    int port = 5000;
+    int port = 15501;
     std::string server = "localhost";
 
     std::string info_file_base = "FilterResultWriter";
@@ -94,10 +97,15 @@ struct FilterResultWriterConfig {
         int first_byte = conn_id + 2;    // 2-254
         int second_byte = group_id + 1;  // 1-254
         int third_byte = app_id + 1;     // 1 - 254
+        std::string conn_addr;
 
-        std::string conn_addr = "tcp://127." + std::to_string(third_byte) +
-                                "." + std::to_string(second_byte) + "." +
-                                std::to_string(first_byte) + ":15501";
+        if (server == "127.0.0.1") {
+            std::string conn_addr = "tcp://127." + std::to_string(third_byte) +
+                                    "." + std::to_string(second_byte) + "." +
+                                    std::to_string(first_byte) + ":15501";
+        } else {
+            conn_addr = "tcp://" + server + ":15501";
+        }
 
         return conn_addr;
     }
@@ -114,24 +122,32 @@ struct FilterResultWriterConfig {
         Queues_t queues;
         Connections_t connections;
 
-        for (size_t group = 0; group < num_groups; ++group) {
-            for (size_t conn = 0; conn < num_connections_per_group; ++conn) {
-                auto conn_addr = get_connection_ip(my_id, group, conn);
-                TLOG() << "Adding connection with id "
-                       << get_connection_name(my_id, group, conn)
-                       << " and address " << conn_addr;
+        //        for (size_t group = 0; group < num_groups; ++group) {
+        //            for (size_t conn = 0; conn < num_connections_per_group;
+        //            ++conn) {
+        //                auto conn_addr = get_connection_ip(my_id, group,
+        //                conn); TLOG() << "Adding connection with id "
+        //                       << get_connection_name(my_id, group, conn)
+        //                       << " and address " << conn_addr;
+        //
+        //                connections.emplace_back(Connection{
+        //                    ConnectionId{get_connection_name(my_id, group,
+        //                    conn),
+        //                                 "TriggerRecord"},
+        //                    conn_addr, ConnectionType::kPubSub});
+        //            }
+        //        }
 
-                connections.emplace_back(Connection{
-                    ConnectionId{get_connection_name(my_id, group, conn),
-                                 "TriggerRecord"},
-                    conn_addr, ConnectionType::kPubSub});
-            }
-        }
+        auto conn_addr = "tcp://" + server + ":" + std::to_string(port);
+        connections.emplace_back(
+            Connection{ConnectionId{"conn_A1_G0_C0_", "TriggerRecord"},
+                       conn_addr, ConnectionType::kSendRecv});
 
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 13000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "TR_tracking" + std::to_string(sub) << " with address "
                    << conn_addr;
@@ -144,7 +160,8 @@ struct FilterResultWriterConfig {
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 23000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "trdispatcher" + std::to_string(sub) << " with address "
                    << conn_addr;
@@ -160,7 +177,8 @@ struct FilterResultWriterConfig {
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 33000 + sub;
-            std::string conn_addr = "tcp://127.0.0.1:" + std::to_string(port);
+            std::string conn_addr =
+                "tcp://" + server + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "trwriter" + std::to_string(sub) << " with address "
                    << conn_addr;
@@ -176,26 +194,26 @@ struct FilterResultWriterConfig {
     }
 };
 
-struct FilterResultWriter {
-    FilterResultWriterConfig config;
-    FilterResultWriter(FilterResultWriterConfig c) : config(c) {}
-};
+// struct FilterResultWriter {
+//     FilterResultWriterConfig config;
+//     FilterResultWriter(FilterResultWriterConfig c) : config(c) {}
+// };
 
-struct PublisherTest {
-    PublisherTest() {
+struct FilterResultWriter {
+    FilterResultWriter() {
         setenv("DUNEDAQ_PARTITION", "IOManager_t", 0);
 
-        std::cout << "from PublisherTest";
+        std::cout << "from FilterResultWriter";
     }
-    ~PublisherTest() { IOManager::get()->reset(); }
+    ~FilterResultWriter() { IOManager::get()->reset(); }
 
-    explicit PublisherTest(FilterResultWriterConfig c) : config(c) {}
-    PublisherTest(PublisherTest const&) = default;
-    PublisherTest(PublisherTest&&) = default;
-    PublisherTest& operator=(PublisherTest const&) = default;
-    PublisherTest& operator=(PublisherTest&&) = default;
+    explicit FilterResultWriter(FilterResultWriterConfig c) : config(c) {}
+    FilterResultWriter(FilterResultWriter const&) = default;
+    FilterResultWriter(FilterResultWriter&&) = default;
+    FilterResultWriter& operator=(FilterResultWriter const&) = default;
+    FilterResultWriter& operator=(FilterResultWriter&&) = default;
 
-    struct PublisherInfo {
+    struct FilterResultWriterInfo {
         size_t conn_id;
         size_t group_id;
         size_t messages_sent{0};
@@ -214,7 +232,7 @@ struct PublisherTest {
         std::unique_ptr<std::thread> send_thread;
         std::chrono::milliseconds get_sender_time;
 
-        PublisherInfo(size_t group, size_t conn)
+        FilterResultWriterInfo(size_t group, size_t conn)
             : conn_id(conn), group_id(group) {}
     };
     struct SubscriberInfo {
@@ -241,7 +259,7 @@ struct PublisherTest {
         }
     };
 
-    std::vector<std::shared_ptr<PublisherInfo>> publishers;
+    std::vector<std::shared_ptr<FilterResultWriterInfo>> publishers;
     std::vector<std::shared_ptr<SubscriberInfo>> subscribers;
     FilterResultWriterConfig config;
 
@@ -394,14 +412,34 @@ struct PublisherTest {
     }
 
     void receive_tr(size_t run_number1) {
-        if (config.next_tr) {
-            auto next_tr_sender =
-                dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
-                    "twriter0");
-            TLOG() << "send next_tr instruction";
-            dunedaq::datafilter::Handshake q("next_tr");
-            next_tr_sender->send(std::move(q), Sender::s_block);
+        bool handshake_done = false;
+        std::atomic<unsigned int> received_cnt = 0;
+
+        auto cb_receiver =
+            dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
+                "trwriter0");
+        std::function<void(dunedaq::datafilter::Handshake)> str_receiver_cb =
+            [&](dunedaq::datafilter::Handshake msg) {
+                if (msg.msg_id == "write_tr") {
+                    ++received_cnt;
+                }
+                TLOG_DEBUG(5) << "FilterResultWriter: TR receiver callback: "
+                              << msg.msg_id;
+            };
+
+        cb_receiver->add_callback(str_receiver_cb);
+        while (!handshake_done) {
+            if (received_cnt == 1) handshake_done = true;
         }
+
+        //        if (config.next_tr) {
+        //            auto next_tr_sender =
+        //                dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
+        //                    "twriter0");
+        //            TLOG() << "send next_tr instruction";
+        //            dunedaq::datafilter::Handshake q("next_tr");
+        //            next_tr_sender->send(std::move(q), Sender::s_block);
+        //        }
 
         TLOG_DEBUG(5) << "Setting up TRWriterInfo objects";
         for (size_t group = 0; group < config.num_groups; ++group) {
@@ -484,14 +522,14 @@ struct PublisherTest {
                         after_callback - after_receiver);
             });
 
-        if (config.next_tr) {
-            auto next_tr_sender =
-                dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
-                    "trwriter0");
-            TLOG() << "send wait for next instruction";
-            dunedaq::datafilter::Handshake q("wait");
-            next_tr_sender->send(std::move(q), Sender::s_block);
-        }
+        //        if (config.next_tr) {
+        //            auto next_tr_sender =
+        //                dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
+        //                    "trwriter0");
+        //            TLOG() << "send wait for next instruction";
+        //            dunedaq::datafilter::Handshake q("wait");
+        //            next_tr_sender->send(std::move(q), Sender::s_block);
+        //        }
 
         TLOG_DEBUG(5) << "Starting wait loop for receives to complete";
         bool all_done = false;
@@ -528,9 +566,10 @@ struct PublisherTest {
             dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
                 "trdispatcher1");
 
-        std::chrono::milliseconds timeout(100);
+        // std::chrono::milliseconds timeout(100);
         dunedaq::datafilter::Handshake sent_t1("trdispatcher1");
-        sender_next_tr->send(std::move(sent_t1), timeout);
+        // sender_next_tr->send(std::move(sent_t1), timeout);
+        sender_next_tr->send(std::move(sent_t1), Sender::s_block);
     }
 
     void send(size_t run_number, pid_t subscriber_pid) {
@@ -545,8 +584,8 @@ struct PublisherTest {
         //      for (size_t conn = 0; conn <
         //      config.num_connections_per_group;
         //      ++conn) {
-        // auto info = std::make_shared<PublisherInfo>(group, conn);
-        auto info = std::make_shared<PublisherInfo>(0, 0);
+        // auto info = std::make_shared<FilterResultWriterInfo>(group, conn);
+        auto info = std::make_shared<FilterResultWriterInfo>(0, 0);
         publishers.push_back(info);
         //      }
         //    }
@@ -554,7 +593,8 @@ struct PublisherTest {
         TLOG_DEBUG(7) << "Getting publisher objects for each connection";
         std::for_each(
             std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers), [=](std::shared_ptr<PublisherInfo> info) {
+            std::end(publishers),
+            [=](std::shared_ptr<FilterResultWriterInfo> info) {
                 auto before_sender = std::chrono::steady_clock::now();
                 info->sender =
                     dunedaq::get_iom_sender<dunedaq::datafilter::Data>(
@@ -573,7 +613,7 @@ struct PublisherTest {
             std::execution::par_unseq, std::begin(publishers),
             std::end(publishers),
             [=, &completed_receiver_tracking,
-             &tracking_mutex](std::shared_ptr<PublisherInfo> info) {
+             &tracking_mutex](std::shared_ptr<FilterResultWriterInfo> info) {
                 info->send_thread.reset(new std::thread(
                     [=, &completed_receiver_tracking, &tracking_mutex]() {
                         bool complete_received = false;
@@ -636,6 +676,8 @@ struct PublisherTest {
     }
 };
 
-}  // namespace filterresultwriter
+}  // namespace datafilter
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Handshake, "init_t");
 }  // namespace dunedaq
+
+#endif  // DFBACKEND_INCLUDE_FILTERRESULTWRITER_HPP_
