@@ -41,7 +41,8 @@ namespace datafilter {
 struct FilterResultWriterConfig {
     bool use_connectivity_service = false;  // unsed for now
     int port = 15501;
-    std::string server = "localhost";
+    std::string server = "127.0.0.1";
+    std::string server_trdispatcher = "127.0.0.1";
 
     std::string info_file_base = "FilterResultWriter";
     std::string odir = "/opt/tmp/chen";
@@ -141,6 +142,7 @@ struct FilterResultWriterConfig {
         auto conn_addr = "tcp://" + server + ":" + std::to_string(port);
         connections.emplace_back(
             Connection{ConnectionId{"conn_A1_G0_C0_", "TriggerRecord"},
+                       // conn_addr, ConnectionType::kPubSub});
                        conn_addr, ConnectionType::kSendRecv});
 
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
@@ -161,7 +163,7 @@ struct FilterResultWriterConfig {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 23000 + sub;
             std::string conn_addr =
-                "tcp://" + server + ":" + std::to_string(port);
+                "tcp://" + server_trdispatcher + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "trdispatcher" + std::to_string(sub) << " with address "
                    << conn_addr;

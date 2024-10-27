@@ -27,7 +27,11 @@ int main(int argc, char* argv[]) {
     desc.add_options()(
         "server,s",
         po::value<std::string>(&config.server)->default_value(config.server),
-        "server")("help,h", po::bool_switch(&help_requested), "For help.");
+        "datafilter server")("server_trdispatcher,st",
+                             po::value<std::string>(&config.server_trdispatcher)
+                                 ->default_value(config.server_trdispatcher),
+                             "trdispatcher server")(
+        "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {
         po::variables_map vm;

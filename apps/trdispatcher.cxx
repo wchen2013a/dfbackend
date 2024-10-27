@@ -35,11 +35,15 @@ int main(int argc, char* argv[]) {
     desc.add_options()(
         "server,s",
         po::value<std::string>(&config.server)->default_value(config.server),
-        "server")("ifilename,f",
-                  po::value<std::string>(&config.input_h5_filename)
-                      ->default_value(config.input_h5_filename),
-                  "input filename ")("hdf5,h5", po::bool_switch(&is_hdf5file),
-                                     "toggle to hdf5 file")(
+        "datafilter server")("server_trdispatcher,st",
+                             po::value<std::string>(&config.server_trdispatcher)
+                                 ->default_value(config.server_trdispatcher),
+                             "trdispatcher server")(
+        "ifilename,f",
+        po::value<std::string>(&config.input_h5_filename)
+            ->default_value(config.input_h5_filename),
+        "input filename ")("hdf5,h5", po::bool_switch(&is_hdf5file),
+                           "toggle to hdf5 file")(
         "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {
@@ -87,7 +91,7 @@ int main(int argc, char* argv[]) {
 
     TLOG() << "TR Dispatcher " << config.my_id << ": "
            << "Configuring IOManager";
-    config.configure_iomanager();
+    // config.configure_iomanager();
 
     auto trdispatcher =
         std::make_unique<dunedaq::datafilter::TRDispatcher>(config);
@@ -111,7 +115,7 @@ int main(int argc, char* argv[]) {
            << "Cleaning up";
     trdispatcher.reset(nullptr);
 
-    dunedaq::iomanager::IOManager::get()->reset();
+    // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "TR Dispatcher " << config.my_id << ": "
            << "DONE";
 

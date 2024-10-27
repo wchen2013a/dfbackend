@@ -31,6 +31,7 @@ struct FilterOrchestratorConfig {
     bool use_connectivity_service = false;  // unsed for now
     int port = 5000;
     std::string server = "127.0.0.1";
+    std::string server_trdispatcher = "127.0.0.1";
 
     std::string session_name = "FilterOrchestrator test run";
     size_t num_apps = 1;
@@ -138,7 +139,7 @@ struct FilterOrchestratorConfig {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 23000 + sub;
             std::string conn_addr =
-                "tcp://" + server + ":" + std::to_string(port);
+                "tcp://" + server_trdispatcher + ":" + std::to_string(port);
             TLOG() << "Adding control connection "
                    << "trdispatcher" + std::to_string(sub) << " with address "
                    << conn_addr;
@@ -354,10 +355,10 @@ struct FilterOrchestrator {
                 "trdispatcher1");
         std::function<void(dunedaq::datafilter::Handshake)> str_receiver_cb =
             [&](dunedaq::datafilter::Handshake msg) {
-                if (msg.msg_id == "trdispatcher1") {
+                if (msg.msg_id == "next_tr") {
                     ++received_cnt;
                 }
-                TLOG() << "Receive instruction from filter results writer: "
+                TLOG() << "Receive instruction from filter results writer : "
                        << msg.msg_id;
             };
 
@@ -365,6 +366,7 @@ struct FilterOrchestrator {
         while (!handshake_done) {
             if (received_cnt == 1) handshake_done = true;
         }
+
         send_next_tr(dataflow_run_number1, subscriber_pid);
     }
 };

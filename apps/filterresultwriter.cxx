@@ -27,15 +27,18 @@ int main(int argc, char* argv[]) {
     desc.add_options()(
         "server,s",
         po::value<std::string>(&config.server)->default_value(config.server),
-        "server")("odir,d",
-                  po::value<std::string>(&config.odir)
-                      ->default_value(config.output_h5_filename),
-                  "output directory")(
-        "ofilename,o",
-        po::value<std::string>(&config.output_h5_filename)
+        "datafilter server")("server_trdispatcher,st",
+                             po::value<std::string>(&config.server_trdispatcher)
+                                 ->default_value(config.server_trdispatcher),
+                             "trdispatcher server")(
+        "odir,d",
+        po::value<std::string>(&config.odir)
             ->default_value(config.output_h5_filename),
-        "output filename ")("help,h", po::bool_switch(&help_requested),
-                            "For help.");
+        "output directory")("ofilename,o",
+                            po::value<std::string>(&config.output_h5_filename)
+                                ->default_value(config.output_h5_filename),
+                            "output filename ")(
+        "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {
         po::variables_map vm;
@@ -64,7 +67,7 @@ int main(int argc, char* argv[]) {
                << "run " << run;
         if (config.num_apps > 1) filterresultwriters->init(run);
         // filterresultwriters->send(run, forked_pids[0]);
-        filterresultwriters->send_next_tr(run, 0);
+        // filterresultwriters->send_next_tr(run, 0);
         filterresultwriters->receive_tr(run);
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run << " complete.";
