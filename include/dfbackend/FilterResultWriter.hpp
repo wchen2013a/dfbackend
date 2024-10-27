@@ -196,17 +196,8 @@ struct FilterResultWriterConfig {
     }
 };
 
-// struct FilterResultWriter {
-//     FilterResultWriterConfig config;
-//     FilterResultWriter(FilterResultWriterConfig c) : config(c) {}
-// };
-
 struct FilterResultWriter {
-    FilterResultWriter() {
-        setenv("DUNEDAQ_PARTITION", "IOManager_t", 0);
-
-        std::cout << "from FilterResultWriter";
-    }
+    FilterResultWriter() { std::cout << "from FilterResultWriter"; }
     ~FilterResultWriter() { IOManager::get()->reset(); }
 
     explicit FilterResultWriter(FilterResultWriterConfig c) : config(c) {}
@@ -225,7 +216,6 @@ struct FilterResultWriter {
         size_t element_id;
         size_t detector_id;
         size_t error_bits;
-        // dunedaq::daqdataformats::Fragment fragment_type;
         size_t fragment_type;
         std::string path_header;
         int n_frames;
