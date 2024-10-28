@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    config.configure_iomanager();
+    // config.configure_iomanager();
 
     auto filterorchestrators =
         std::make_unique<dunedaq::datafilter::FilterOrchestrator>(config);
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
            << "Cleaning up";
     filterorchestrators.reset(nullptr);
 
-    dunedaq::iomanager::IOManager::get()->reset();
+    // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "Filter Orchestrator " << config.my_id << ": "
            << "DONE";
 

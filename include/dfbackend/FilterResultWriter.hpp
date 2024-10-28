@@ -38,8 +38,11 @@ using dataobj_t = nlohmann::json;
 namespace dunedaq {
 namespace datafilter {
 
+using trigger_record_ptr_t =
+    std::unique_ptr<dunedaq::daqdataformats::TriggerRecord>;
+
 struct FilterResultWriterConfig {
-    bool use_connectivity_service = false;  // unsed for now
+    bool use_connectivity_service = false;
     int port = 15501;
     std::string server = "127.0.0.1";
     std::string server_trdispatcher = "127.0.0.1";
@@ -47,13 +50,13 @@ struct FilterResultWriterConfig {
     std::string info_file_base = "FilterResultWriter";
     std::string odir = "/opt/tmp/chen";
     std::string output_h5_filename = "/opt/tmp/chen/h5_test.hdf5";
-    std::string session_name = "iomanager : FilterResultWriter";
+    std::string session_name = "FilterResultWriter test run";
     size_t num_apps = 1;
     size_t num_connections_per_group = 1;
     size_t num_groups = 1;
     size_t num_messages = 1;
     size_t message_size_kb = 1024;
-    size_t num_runs = 2;
+    size_t num_runs = 1;
     size_t my_id = 1;
     size_t send_interval_ms = 100;
     int publish_interval = 10000;
@@ -197,10 +200,16 @@ struct FilterResultWriterConfig {
 };
 
 struct FilterResultWriter {
-    FilterResultWriter() { std::cout << "from FilterResultWriter"; }
-    ~FilterResultWriter() { IOManager::get()->reset(); }
+    FilterResultWriter() { TLOG() << "from FilterResultWriter"; }
+    ~FilterResultWriter() {
+        TLOG() << "from ~FilterResultWriter()";
+        dunedaq::iomanager::IOManager::get()->reset();
+    }
 
-    explicit FilterResultWriter(FilterResultWriterConfig c) : config(c) {}
+    explicit FilterResultWriter(FilterResultWriterConfig c) : config(c) {
+        TLOG() << "from  FilterResultWriter";
+        config.configure_iomanager();
+    }
     FilterResultWriter(FilterResultWriter const&) = default;
     FilterResultWriter(FilterResultWriter&&) = default;
     FilterResultWriter& operator=(FilterResultWriter const&) = default;
@@ -458,46 +467,42 @@ struct FilterResultWriter {
             std::execution::par_unseq, std::begin(subscribers),
             std::end(subscribers),
             [=, &last_received](std::shared_ptr<SubscriberInfo> info) {
-                auto recv_proc =
-                    [=, &last_received](
-                        std::unique_ptr<dunedaq::daqdataformats::TriggerRecord>&
-                            tr) {
-                        auto trigger_timestamp = tr->get_fragments_ref()
-                                                     .at(0)
-                                                     ->get_trigger_timestamp();
-                        auto trigger_number =
-                            tr->get_fragments_ref().at(0)->get_trigger_number();
-                        auto run_number =
-                            tr->get_fragments_ref().at(0)->get_run_number();
-                        int file_index = 0;
+                auto recv_proc = [=, &last_received](trigger_record_ptr_t& tr) {
+                    auto trigger_timestamp =
+                        tr->get_fragments_ref().at(0)->get_trigger_timestamp();
+                    auto trigger_number =
+                        tr->get_fragments_ref().at(0)->get_trigger_number();
+                    auto run_number =
+                        tr->get_fragments_ref().at(0)->get_run_number();
+                    int file_index = 0;
 
-                        TLOG() << "run_number " << run_number
-                               << ", trigger number: " << trigger_number;
-                        info->msgs_received++;
-                        last_received = std::chrono::steady_clock::now();
+                    TLOG() << "run_number " << run_number
+                           << ", trigger number: " << trigger_number;
+                    info->msgs_received++;
+                    last_received = std::chrono::steady_clock::now();
 
-                        if (info->msgs_received = config.num_messages) {
-                            TLOG() << "Complete condition reached, sending "
-                                      "init message for "
-                                   << info->get_connection_name(config);
-                            std::string app_name = "test";
-                            std::string ofile_name =
-                                config.odir + "/" + config.output_h5_filename +
-                                std::to_string(trigger_number) + ".hdf5";
-                            TLOG() << "Writing the TR to " << ofile_name;
+                    if (info->msgs_received = config.num_messages) {
+                        TLOG() << "Complete condition reached, sending "
+                                  "init message for "
+                               << info->get_connection_name(config);
+                        std::string app_name = "test";
+                        std::string ofile_name =
+                            config.odir + "/" + config.output_h5_filename +
+                            std::to_string(trigger_number) + ".hdf5";
+                        TLOG() << "Writing the TR to " << ofile_name;
 
-                            // create the file
-                            std::unique_ptr<HDF5RawDataFile> h5file_ptr(
-                                new HDF5RawDataFile(
-                                    ofile_name, run_number, file_index,
-                                    app_name, flp_json_in, srcid_geoid_map,
-                                    ".writing", HighFive::File::Overwrite));
+                        // create the file
+                        std::unique_ptr<HDF5RawDataFile> h5file_ptr(
+                            new HDF5RawDataFile(
+                                ofile_name, run_number, file_index, app_name,
+                                flp_json_in, srcid_geoid_map, ".writing",
+                                HighFive::File::Overwrite));
 
-                            h5file_ptr->write(*tr);
-                            h5file_ptr.reset();
-                            info->complete = true;
-                        }
-                    };
+                        h5file_ptr->write(*tr);
+                        h5file_ptr.reset();
+                        info->complete = true;
+                    }
+                };
 
                 auto before_receiver = std::chrono::steady_clock::now();
                 auto receiver = dunedaq::get_iom_receiver<
@@ -539,11 +544,15 @@ struct FilterResultWriter {
         }
         TLOG_DEBUG(5) << "Removing callbacks";
         for (auto& info : subscribers) {
-            auto receiver =
-                dunedaq::get_iom_receiver<dunedaq::datafilter::Data>(
-                    info->get_connection_name(config));
+            auto receiver = dunedaq::get_iom_receiver<trigger_record_ptr_t>(
+                info->get_connection_name(config));
             receiver->remove_callback();
         }
+
+        auto cb_receiver1 =
+            dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
+                "trwriter0");
+        cb_receiver1->remove_callback();
 
         subscribers.clear();
         TLOG_DEBUG(5) << "receive() done";
@@ -563,109 +572,108 @@ struct FilterResultWriter {
         // sender_next_tr->send(std::move(sent_t1), timeout);
         sender_next_tr->send(std::move(sent_t1), Sender::s_block);
     }
+    /*
+        void send(size_t run_number, pid_t subscriber_pid) {
+            std::ostringstream ss;
+            auto init_receiver =
+                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
+                    "TR_tracking2");
+            std::unordered_map<int, std::set<size_t>>
+       completed_receiver_tracking; std::mutex tracking_mutex;
 
-    void send(size_t run_number, pid_t subscriber_pid) {
-        std::ostringstream ss;
-        auto init_receiver =
-            dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
-                "TR_tracking2");
-        std::unordered_map<int, std::set<size_t>> completed_receiver_tracking;
-        std::mutex tracking_mutex;
+            //    for (size_t group = 0; group < config.num_groups; ++group) {
+            //      for (size_t conn = 0; conn <
+            //      config.num_connections_per_group;
+            //      ++conn) {
+            // auto info = std::make_shared<FilterResultWriterInfo>(group,
+       conn); auto info = std::make_shared<FilterResultWriterInfo>(0, 0);
+            publishers.push_back(info);
+            //      }
+            //    }
 
-        //    for (size_t group = 0; group < config.num_groups; ++group) {
-        //      for (size_t conn = 0; conn <
-        //      config.num_connections_per_group;
-        //      ++conn) {
-        // auto info = std::make_shared<FilterResultWriterInfo>(group, conn);
-        auto info = std::make_shared<FilterResultWriterInfo>(0, 0);
-        publishers.push_back(info);
-        //      }
-        //    }
+            TLOG_DEBUG(7) << "Getting publisher objects for each connection";
+            std::for_each(
+                std::execution::par_unseq, std::begin(publishers),
+                std::end(publishers),
+                [=](std::shared_ptr<FilterResultWriterInfo> info) {
+                    auto before_sender = std::chrono::steady_clock::now();
+                    info->sender =
+                        dunedaq::get_iom_sender<dunedaq::datafilter::Data>(
+                            config.get_connection_name(config.my_id,
+       info->group_id, info->conn_id)); auto after_sender =
+       std::chrono::steady_clock::now(); info->get_sender_time =
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            after_sender - before_sender);
+                });
 
-        TLOG_DEBUG(7) << "Getting publisher objects for each connection";
-        std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers),
-            [=](std::shared_ptr<FilterResultWriterInfo> info) {
-                auto before_sender = std::chrono::steady_clock::now();
-                info->sender =
-                    dunedaq::get_iom_sender<dunedaq::datafilter::Data>(
-                        config.get_connection_name(config.my_id, info->group_id,
-                                                   info->conn_id));
-                auto after_sender = std::chrono::steady_clock::now();
-                info->get_sender_time =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        after_sender - before_sender);
-            });
+            auto size = 1024;
 
-        auto size = 1024;
+            TLOG_DEBUG(7) << "Starting publish threads";
+            std::for_each(
+                std::execution::par_unseq, std::begin(publishers),
+                std::end(publishers),
+                [=, &completed_receiver_tracking,
+                 &tracking_mutex](std::shared_ptr<FilterResultWriterInfo> info)
+       { info->send_thread.reset(new std::thread(
+                        [=, &completed_receiver_tracking, &tracking_mutex]() {
+                            bool complete_received = false;
 
-        TLOG_DEBUG(7) << "Starting publish threads";
-        std::for_each(
-            std::execution::par_unseq, std::begin(publishers),
-            std::end(publishers),
-            [=, &completed_receiver_tracking,
-             &tracking_mutex](std::shared_ptr<FilterResultWriterInfo> info) {
-                info->send_thread.reset(new std::thread(
-                    [=, &completed_receiver_tracking, &tracking_mutex]() {
-                        bool complete_received = false;
-
-                        while (!complete_received) {
-                            // wait for the next TR request
-                            std::atomic<std::chrono::steady_clock::time_point>
-                                last_received =
-                                    std::chrono::steady_clock::now();
-                            while (std::chrono::duration_cast<
-                                       std::chrono::milliseconds>(
-                                       std::chrono::steady_clock::now() -
-                                       last_received.load())
-                                       .count() < 500) {
-                                dunedaq::datafilter::Handshake recv;
-                                recv =
-                                    init_receiver->receive(Receiver::s_block);
-                                TLOG() << "recv.msg_id " << recv.msg_id;
-                                std::this_thread::sleep_for(100ms);
-                                if (recv.msg_id == "wait") {
-                                    //     if (config.next_tr) {
-                                    auto next_tr_sender =
-                                        dunedaq::get_iom_sender<
-                                            dunedaq::datafilter::Handshake>(
-                                            "trdispatcher2");
-                                    TLOG() << "send wait for next instruction";
-                                    dunedaq::datafilter::Handshake q("wait");
-                                    next_tr_sender->send(std::move(q),
-                                                         Sender::s_block);
-                                    //      }
-                                    continue;
-                                } else if (recv.msg_id == "next_tr") {
-                                    TLOG() << "Got next_tr instruction";
-                                    //    if (config.next_tr) {
-                                    auto next_tr_sender =
-                                        dunedaq::get_iom_sender<
-                                            dunedaq::datafilter::Handshake>(
-                                            "trdispatcher2");
-                                    TLOG() << "send next_tr instruction";
-                                    dunedaq::datafilter::Handshake q("next_tr");
-                                    next_tr_sender->send(std::move(q),
-                                                         Sender::s_block);
-                                    //    }
-                                    break;
+                            while (!complete_received) {
+                                // wait for the next TR request
+                                std::atomic<std::chrono::steady_clock::time_point>
+                                    last_received =
+                                        std::chrono::steady_clock::now();
+                                while (std::chrono::duration_cast<
+                                           std::chrono::milliseconds>(
+                                           std::chrono::steady_clock::now() -
+                                           last_received.load())
+                                           .count() < 500) {
+                                    dunedaq::datafilter::Handshake recv;
+                                    recv =
+                                        init_receiver->receive(Receiver::s_block);
+                                    TLOG() << "recv.msg_id " << recv.msg_id;
+                                    std::this_thread::sleep_for(100ms);
+                                    if (recv.msg_id == "wait") {
+                                        //     if (config.next_tr) {
+                                        auto next_tr_sender =
+                                            dunedaq::get_iom_sender<
+                                                dunedaq::datafilter::Handshake>(
+                                                "trdispatcher2");
+                                        TLOG() << "send wait for next
+       instruction"; dunedaq::datafilter::Handshake q("wait");
+                                        next_tr_sender->send(std::move(q),
+                                                             Sender::s_block);
+                                        //      }
+                                        continue;
+                                    } else if (recv.msg_id == "next_tr") {
+                                        TLOG() << "Got next_tr instruction";
+                                        //    if (config.next_tr) {
+                                        auto next_tr_sender =
+                                            dunedaq::get_iom_sender<
+                                                dunedaq::datafilter::Handshake>(
+                                                "trdispatcher2");
+                                        TLOG() << "send next_tr instruction";
+                                        dunedaq::datafilter::Handshake
+       q("next_tr"); next_tr_sender->send(std::move(q), Sender::s_block);
+                                        //    }
+                                        break;
+                                    }
                                 }
+
+                                //}
+                                // force the while loop to end when no trigger
+                                // path left. complete_received = true;
                             }
+                        }));
+                });
 
-                            //}
-                            // force the while loop to end when no trigger
-                            // path left. complete_received = true;
-                        }
-                    }));
-            });
-
-        TLOG_DEBUG(7) << "Joining send threads";
-        for (auto& sender : publishers) {
-            sender->send_thread->join();
-            sender->send_thread.reset(nullptr);
+            TLOG_DEBUG(7) << "Joining send threads";
+            for (auto& sender : publishers) {
+                sender->send_thread->join();
+                sender->send_thread.reset(nullptr);
+            }
         }
-    }
+    */
 };
 
 }  // namespace datafilter

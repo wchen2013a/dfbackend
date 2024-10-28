@@ -39,7 +39,7 @@ struct FilterOrchestratorConfig {
     size_t num_groups = 1;
     size_t num_messages = 1;
     size_t message_size_kb = 1024;
-    size_t num_runs = 2;
+    size_t num_runs = 1;
     size_t my_id = 0;
     size_t send_interval_ms = 100;
     int publish_interval = 1000;
@@ -191,7 +191,10 @@ struct FilterOrchestrator {
 
     std::string path_header1;
 
-    explicit FilterOrchestrator(FilterOrchestratorConfig c) : config(c) {}
+    explicit FilterOrchestrator(FilterOrchestratorConfig c) : config(c) {
+        config.configure_iomanager();
+    }
+    ~FilterOrchestrator() { dunedaq::iomanager::IOManager::get()->reset(); }
 
     void init(size_t run_number) {
         TLOG_DEBUG(5) << "Getting init sender";
@@ -366,6 +369,8 @@ struct FilterOrchestrator {
         while (!handshake_done) {
             if (received_cnt == 1) handshake_done = true;
         }
+
+        cb_receiver->remove_callback();
 
         send_next_tr(dataflow_run_number1, subscriber_pid);
     }

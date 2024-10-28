@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
 
     TLOG() << "Filter Result Writer " << config.my_id << ": "
            << "Configuring IOManager";
-    config.configure_iomanager();
+    // config.configure_iomanager();
 
     auto filterresultwriters =
         std::make_unique<dunedaq::datafilter::FilterResultWriter>(config);
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
            << "Cleaning up";
     filterresultwriters.reset(nullptr);
 
-    dunedaq::iomanager::IOManager::get()->reset();
+    // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "Filter Result Writer " << config.my_id << ": "
            << "DONE";
 

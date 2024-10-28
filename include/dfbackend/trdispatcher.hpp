@@ -42,7 +42,7 @@ struct TRDispatcherConfig {
     size_t num_groups = 1;
     size_t num_messages = 1;
     size_t message_size_kb = 1024;
-    size_t num_runs = 2;
+    size_t num_runs = 1;
     size_t my_id = 0;
     size_t send_interval_ms = 100;
     int publish_interval = 1000;
@@ -674,6 +674,8 @@ struct TRDispatcher {
         while (!handshake_done) {
             if (received_cnt == 1) handshake_done = true;
         }
+
+        cb_receiver->remove_callback();
 
         if (is_hdf5file) {
             send_tr_from_hdf5file(dataflow_run_number1, subscriber_pid);
