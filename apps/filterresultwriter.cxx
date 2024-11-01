@@ -31,6 +31,9 @@ int main(int argc, char* argv[]) {
                              po::value<std::string>(&config.server_trdispatcher)
                                  ->default_value(config.server_trdispatcher),
                              "trdispatcher server")(
+        "num_runs,r",
+        po::value<size_t>(&config.num_runs)->default_value(config.num_runs),
+        "Number of trigger record to receive")(
         "odir,d",
         po::value<std::string>(&config.odir)
             ->default_value(config.output_h5_filename),

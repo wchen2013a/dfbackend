@@ -31,6 +31,9 @@ int main(int argc, char* argv[]) {
                              po::value<std::string>(&config.server_trdispatcher)
                                  ->default_value(config.server_trdispatcher),
                              "trdispatcher server")(
+        "num_runs,r",
+        po::value<size_t>(&config.num_runs)->default_value(config.num_runs),
+        "Number of trigger record to send")(
         "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {

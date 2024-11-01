@@ -280,11 +280,14 @@ struct TRDispatcher {
     // generate a dummy test trigger record to be send to datafilter
     dunedaq::datafilter::trigger_record_ptr_t create_trigger_record(
         uint64_t trig_num) {
-        // test setup our dummy_data
         std::vector<char> dummy_vector(fragment_size);
+
+        for (auto& i : dummy_vector) {
+            i = std::rand();
+        }
         char* dummy_data = dummy_vector.data();
 
-        // get a timestamp for this trigger
+        // generate the timestamp for trigger record
         int64_t ts = std::chrono::duration_cast<std::chrono::milliseconds>(
                          system_clock::now().time_since_epoch())
                          .count();
@@ -429,6 +432,7 @@ struct TRDispatcher {
     // send trigger records from self generated TR
     void send_tr(size_t dataflow_run_number, pid_t subscriber_pid) {
         std::ostringstream ss;
+        auto trig_num = dataflow_run_number;
 
         auto init_sender =
             dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
@@ -488,7 +492,7 @@ struct TRDispatcher {
                             TLOG() << "Sender message: generate trigger "
                                       "record";
                             dunedaq::datafilter::trigger_record_ptr_t
-                                temp_record(create_trigger_record(1));
+                                temp_record(create_trigger_record(trig_num));
 
                             TLOG() << "Start sending  trigger record";
                             info->sender->try_send(
@@ -618,9 +622,6 @@ struct TRDispatcher {
                                 auto deserialized =
                                     dunedaq::serialization::deserialize<
                                         trigger_record_ptr_t>(bytes);
-
-                                // dunedaq::datafilter::trigger_record_ptr_t
-                                //     temp_record(&tr);
 
                                 info->sender->try_send(
                                     std::move(deserialized),
