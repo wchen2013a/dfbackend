@@ -27,6 +27,8 @@ using namespace datafilter;
 int main(int argc, char* argv[]) {
     logging::Logging().setup();
 
+    std::vector<std::filesystem::path> files;
+
     dunedaq::datafilter::TRDispatcherConfig config;
     bool help_requested = false;
     bool is_hdf5file = false;
@@ -105,7 +107,11 @@ int main(int argc, char* argv[]) {
         if (config.num_apps > 1) trdispatcher->init(run);
         // trdispatcher->send(run, forked_pids[0]);
         if (is_hdf5file) {
-            trdispatcher->receive(run, 0, true);
+            files = trdispatcher->get_hdf5files_from_storage();
+            for (auto file : files) {
+                config.input_h5_filename = file;
+                trdispatcher->receive(run, 0, true);
+            }
         } else {
             trdispatcher->receive(run, 0, false);
         }

@@ -488,6 +488,7 @@ struct FilterResultWriter {
                         std::string app_name = "test";
                         std::string ofile_name =
                             config.odir + "/" + config.output_h5_filename +
+                            "_" + std::to_string(run_number) + "_" +
                             std::to_string(trigger_number) + ".hdf5";
                         TLOG() << "Writing the TR to " << ofile_name;
 

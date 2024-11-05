@@ -1,15 +1,16 @@
-#ifndef TRDISPATCHER_INCLUDE_
-#define TRDISPATCHER_INCLUDE_
+#ifndef DFBACKEND_INCLUDE_HDF5FromStorage_HPP_
+#define DFBACKEND_INCLUDE_HDF5FromStorage_HPP_
 
 #include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
 
+#include "logging/Logging.hpp"
 #include "nlohmann/json.hpp"
 
 namespace dunedaq {
-namespace trdispatcher {
+namespace datafilter {
 
 struct HDF5FromStorage {
     nlohmann::json hdf5_files_json;
@@ -37,13 +38,13 @@ struct HDF5FromStorage {
             std::string file_ext = entry.path().extension().string();
 
             if (file_ext == ".hdf5") {
-                std::cout << "found list of hdf5 files to datafilter: "
-                          << entry.path().filename().string() << '\n';
+                TLOG() << "found a new hdf5 file: "
+                       << entry.path().filename().string() << '\n';
                 for (auto item : hdf5_files_already_transfer) {
-                    std::cout << "item" << item << "\n";
+                    TLOG() << "item" << item << "\n";
                     if (item != entry.path().filename().string()) {
-                        std::cout << "transfer"
-                                  << entry.path().filename().string() << '\n';
+                        TLOG() << "transfer" << entry.path().filename().string()
+                               << '\n';
                         hdf5_files_to_transfer.push_back(entry.path());
                         break;
                     }
@@ -229,6 +230,6 @@ struct HDF5FromStorage {
 //
 // }
 
-}  // namespace trdispatcher
+}  // namespace datafilter
 }  // namespace dunedaq
 #endif

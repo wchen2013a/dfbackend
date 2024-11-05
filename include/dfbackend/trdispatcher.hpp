@@ -9,7 +9,7 @@
 
 #include "datafilter/data_struct.hpp"
 #include "detdataformats/DetID.hpp"
-// #include "dfbackend/HDF5FromStorage.hpp"
+#include "dfbackend/HDF5FromStorage.hpp"
 //  #include "fddetdataformats/WIBEthFrame.hpp"
 #include "dfmessages/TriggerRecord_serialization.hpp"
 #include "hdf5libs/HDF5RawDataFile.hpp"
@@ -170,23 +170,6 @@ struct TRDispatcherConfig {
     }
 };
 
-// struct TRDispatcher {
-//     // TRDispatcher();
-//     const std::string storage_pathname =
-//         "/lcg/storage19/test-area/dune-v4-spack-integration2/sourcecode/"
-//         "daqconf/config/";
-//     const std::string json_file = "hdf5_files_list.json";
-//
-//     //    void init() {
-//     //        dunedaq::trdispatcher::HDF5FromStorage s(storage_pathname,
-//     //        json_file); s.print();
-//     //
-//     //        for (auto file : s.hdf5_files_to_transfer) {
-//     //            std::cout << "main: files to transfer" << file << "\n";
-//     //        }
-//     //    }
-// };
-
 struct TRDispatcher {
     struct TRDispatcherInfo {
         size_t conn_id;
@@ -234,6 +217,10 @@ struct TRDispatcher {
         "swtest_run001039_0000_dataflow0_datawriter_0_20231103T121050.hdf5";
     // HDF5RawDataFile h5_file(config.input_h5_filename);
     // HDF5RawDataFile h5_file1(input_h5_filename);
+    std::string storage_pathname =
+        "/lcg/storage19/test-area/dune-v4-spack-integration2/sourcecode/"
+        "daqconf/config/";
+    std::string json_file = "hdf5_files_list.json";
 
     ConnectionId conn_id;
     ConnectionId conn_id1;
@@ -275,6 +262,16 @@ struct TRDispatcher {
             break;
         }
         TLOG() << "End init()";
+    }
+
+    std::vector<std::filesystem::path> get_hdf5files_from_storage() {
+        dunedaq::datafilter::HDF5FromStorage s(storage_pathname, json_file);
+        s.print();
+
+        for (auto file : s.hdf5_files_to_transfer) {
+            std::cout << "main: files to transfer" << file << "\n";
+        }
+        return s.hdf5_files_to_transfer;
     }
 
     // generate a dummy test trigger record to be send to datafilter
@@ -561,8 +558,6 @@ struct TRDispatcher {
             std::end(trdispatchers),
             [=](std::shared_ptr<TRDispatcherInfo> info) {
                 auto before_sender = std::chrono::steady_clock::now();
-                //                    info->sender =
-                //                    dunedaq::get_iom_sender<dunedaq::datafilter::Data>(
                 info->sender = dunedaq::get_iom_sender<trigger_record_ptr_t>(
                     config.get_connection_name(config.my_id, info->group_id,
                                                info->conn_id));
@@ -587,6 +582,8 @@ struct TRDispatcher {
                         while (!complete_received) {
                             TLOG() << "Sender message: trigger "
                                       "record";
+
+                            // get_hdf5files_from_storage();
                             std::string ifilename = config.input_h5_filename;
                             TLOG() << "Reading " << ifilename;
 
