@@ -32,6 +32,8 @@ int main(int argc, char* argv[]) {
     dunedaq::datafilter::TRDispatcherConfig config;
     bool help_requested = false;
     bool is_hdf5file = false;
+    bool is_from_storage = false;
+    std::string input_h5_filename = config.input_h5_filename;
     namespace po = boost::program_options;
     po::options_description desc("TR Dispatcher");
     desc.add_options()(
@@ -47,8 +49,10 @@ int main(int argc, char* argv[]) {
         "ifilename,f",
         po::value<std::string>(&config.input_h5_filename)
             ->default_value(config.input_h5_filename),
-        "input filename ")("hdf5,h5", po::bool_switch(&is_hdf5file),
-                           "toggle to hdf5 file")(
+        "input filename ")("from_storage,from",
+                           po::bool_switch(&is_from_storage),
+                           "hdf5 files from storage")(
+        "hdf5,h5", po::bool_switch(&is_hdf5file), "toggle to hdf5 file")(
         "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {
@@ -106,12 +110,16 @@ int main(int argc, char* argv[]) {
                << "run " << run;
         if (config.num_apps > 1) trdispatcher->init(run);
         // trdispatcher->send(run, forked_pids[0]);
-        if (is_hdf5file) {
+        if (is_from_storage) {
             files = trdispatcher->get_hdf5files_from_storage();
             for (auto file : files) {
                 config.input_h5_filename = file;
                 trdispatcher->receive(run, 0, true);
             }
+        }
+
+        if (is_hdf5file and !is_from_storage) {
+            trdispatcher->receive(run, 0, true);
         } else {
             trdispatcher->receive(run, 0, false);
         }
