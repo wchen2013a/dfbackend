@@ -174,7 +174,7 @@ struct TRDispatcher {
     struct TRDispatcherInfo {
         size_t conn_id;
         size_t group_id;
-        size_t messages_sent{0};
+        size_t messages_sent = 0;
         size_t trigger_number;
         size_t trigger_timestamp;
         size_t run_number = 53;
@@ -206,7 +206,6 @@ struct TRDispatcher {
     const size_t components_per_record = element_count_tpc + element_count_pds +
                                          element_count_ta + element_count_tc;
 
-    uint16_t data3[200000000];
     uint32_t nchannels = 64;
     uint32_t nsamples = 64;
 
@@ -265,6 +264,8 @@ struct TRDispatcher {
     }
 
     std::vector<std::filesystem::path> get_hdf5files_from_storage() {
+        TLOG() << "I am in get_hdf5files_from_storage";
+
         dunedaq::datafilter::HDF5FromStorage s(storage_pathname, json_file);
         s.print();
 
@@ -370,7 +371,7 @@ struct TRDispatcher {
             dunedaq::daqdataformats::FragmentHeader fh;
             fh.trigger_number = trig_num;
             fh.trigger_timestamp = ts;
-            fh.window_begin = ts;
+            fh.window_begin = ts - 10;
             fh.window_end = ts;
             fh.run_number = run_number;
             fh.fragment_type =
@@ -580,10 +581,8 @@ struct TRDispatcher {
                         std::ostringstream ss;
                         std::this_thread::sleep_for(100ms);
                         while (!complete_received) {
-                            TLOG() << "Sender message: trigger "
-                                      "record";
+                            TLOG() << "Sender message: trigger record";
 
-                            // get_hdf5files_from_storage();
                             std::string ifilename = config.input_h5_filename;
                             TLOG() << "Reading " << ifilename;
 

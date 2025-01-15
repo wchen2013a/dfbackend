@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -17,9 +18,9 @@ struct HDF5FromStorage {
     std::vector<nlohmann::json> hdf5_files_already_transfer;
     std::vector<std::filesystem::path> hdf5_files_to_transfer;
     std::vector<std::filesystem::path> hdf5_files_waiting;
-    // const std::string json_file="hdf5_files_list.json";
     const std::string json_file;
     const std::string storage_pathname;
+    bool is_save_json = false;
 
     HDF5FromStorage(const std::string& storage_pathname,
                     const std::string json_file)
@@ -39,9 +40,10 @@ struct HDF5FromStorage {
 
             if (file_ext == ".hdf5") {
                 TLOG() << "found a new hdf5 file: "
+                       << entry.path().parent_path().string() << "/"
                        << entry.path().filename().string() << '\n';
                 for (auto item : hdf5_files_already_transfer) {
-                    TLOG() << "item" << item << "\n";
+                    TLOG() << "item" << item << '\n';
                     if (item != entry.path().filename().string()) {
                         TLOG() << "transfer" << entry.path().filename().string()
                                << '\n';
@@ -64,8 +66,15 @@ struct HDF5FromStorage {
     }
     void ReadWriteJSON() {
         std::ifstream file_in(json_file);
-        file_in >> hdf5_files_json;
-        file_in.close();
+        if (!file_in.is_open()) {
+            TLOG() << "failed to open " << json_file << '\n';
+            exit(0);
+        } else {
+            file_in >> hdf5_files_json;
+            is_save_json = true;
+            file_in.close();
+        }
+
         auto hdf5_files1 = hdf5_files_json["hdf5_files"];
         for (auto hdf5_file : hdf5_files1) {
             // std::cout<<"hdf5_file
@@ -80,7 +89,7 @@ struct HDF5FromStorage {
             unique(hdf5_files_already_transfer.begin(),
                    hdf5_files_already_transfer.end()),
             hdf5_files_already_transfer.end());
-        save(json_file);
+        if (is_save_json) save(json_file);
     }
 
     void save(const std::string json_file) {
@@ -98,16 +107,16 @@ struct HDF5FromStorage {
     }
 
     void print() {
-        std::cout << "print info"
-                  << "\n";
+        TLOG() << "print hdf5 files info"
+               << "\n";
         for (auto file : hdf5_files_to_transfer) {
-            std::cout << "HDF5 file to transfer" << file << "\n";
+            std::cout << "HDF5 file to transfer " << file << "\n";
         }
         for (auto file : hdf5_files_waiting) {
-            std::cout << "HDF5 file waiting" << file << "\n";
+            std::cout << "HDF5 file waiting " << file << "\n";
         }
         for (auto file : hdf5_files_already_transfer) {
-            std::cout << "HDF5 file already transfer" << file << "\n";
+            std::cout << "HDF5 file already transfer " << file << "\n";
         }
     }
 };
