@@ -15,7 +15,7 @@ namespace datafilter {
 
 struct HDF5FromStorage {
     nlohmann::json hdf5_files_json;
-    std::vector<nlohmann::json> hdf5_files_already_transfer;
+    std::vector<std::string> hdf5_files_already_transfer;
     std::vector<std::filesystem::path> hdf5_files_to_transfer;
     std::vector<std::filesystem::path> hdf5_files_waiting;
     const std::string json_file;
@@ -25,90 +25,225 @@ struct HDF5FromStorage {
     HDF5FromStorage(const std::string& storage_pathname,
                     const std::string json_file)
         : storage_pathname(storage_pathname), json_file(json_file) {
-        ReadWriteJSON();
-        HDF5Find();
+        ReadJSON();  // Read the JSON file
+        HDF5Find();  // Scan the storage directory
     }
 
     void HDF5Find() {
         const std::filesystem::path daq_storage_path{storage_pathname};
+
+        // Validate the storage path
+        if (!std::filesystem::exists(daq_storage_path)) {
+            throw std::runtime_error("Storage path does not exist: " +
+                                     storage_pathname);
+        }
+
         for (auto const& entry :
              std::filesystem::directory_iterator{daq_storage_path}) {
-            // std::cout << entry.path().filename().string() << '\n';
-            // std::cout << entry.path().extension().string() << '\n';
-
             std::string file_ext = entry.path().extension().string();
 
             if (file_ext == ".hdf5") {
-                TLOG() << "found a new hdf5 file: "
-                       << entry.path().parent_path().string() << "/"
-                       << entry.path().filename().string() << '\n';
-                for (auto item : hdf5_files_already_transfer) {
-                    TLOG() << "item" << item << '\n';
-                    if (item != entry.path().filename().string()) {
-                        TLOG() << "transfer" << entry.path().filename().string()
-                               << '\n';
-                        hdf5_files_to_transfer.push_back(entry.path());
+                TLOG_DEBUG(7) << "found a new hdf5 file: "
+                              << entry.path().parent_path().string() << "/"
+                              << entry.path().filename().string() << '\n';
+
+                bool is_already_transferred = false;
+                for (const auto& item : hdf5_files_already_transfer) {
+                    // Compare the filename directly (item is a string)
+                    if (item == entry.path().filename().string()) {
+                        is_already_transferred = true;
                         break;
                     }
                 }
+
+                if (!is_already_transferred) {
+                    TLOG() << "To transfer " << entry.path().filename().string()
+                           << '\n';
+                    hdf5_files_to_transfer.push_back(entry.path());
+                }
             }
+
             if (file_ext == ".writing") {
                 hdf5_files_waiting.push_back(entry.path());
-                // std::cout << "found waiting list
-                // :"<<entry.path().filename().string() << '\n';
             }
         }
 
-        std::sort(hdf5_files_to_transfer.begin(), hdf5_files_to_transfer.end());
-        hdf5_files_to_transfer.erase(unique(hdf5_files_to_transfer.begin(),
-                                            hdf5_files_to_transfer.end()),
-                                     hdf5_files_to_transfer.end());
+        // Remove duplicates (if any)
+        if (!hdf5_files_to_transfer.empty()) {
+            std::sort(hdf5_files_to_transfer.begin(),
+                      hdf5_files_to_transfer.end());
+            hdf5_files_to_transfer.erase(
+                std::unique(hdf5_files_to_transfer.begin(),
+                            hdf5_files_to_transfer.end()),
+                hdf5_files_to_transfer.end());
+        }
     }
-    void ReadWriteJSON() {
+
+    void ReadJSON() {
+        // Open the JSON file
         std::ifstream file_in(json_file);
         if (!file_in.is_open()) {
-            TLOG() << "failed to open " << json_file << '\n';
-            exit(0);
-        } else {
-            file_in >> hdf5_files_json;
-            is_save_json = true;
-            file_in.close();
+            throw std::runtime_error("Failed to open JSON file: " + json_file);
         }
 
-        auto hdf5_files1 = hdf5_files_json["hdf5_files"];
-        for (auto hdf5_file : hdf5_files1) {
-            // std::cout<<"hdf5_file
-            // "<<hdf5_file["hdf5_file"].get<std::string>()<<"\n"; std::string
-            // hdf5_file1 = hdf5_file["hdf5_file"].get<std::string()>;
-            hdf5_files_already_transfer.push_back(hdf5_file["hdf5_file"]);
+        try {
+            // Parse the JSON file
+            file_in >> hdf5_files_json;
+            file_in.close();
+
+            // Check if the "hdf5_files" key exists
+            if (!hdf5_files_json.contains("hdf5_files")) {
+                TLOG_DEBUG(7)
+                    << "Key 'hdf5_files' not found in JSON file." << '\n';
+                return;
+            }
+
+            // Validate that "hdf5_files" is an array
+            if (!hdf5_files_json["hdf5_files"].is_array()) {
+                TLOG_DEBUG(7)
+                    << "Expected 'hdf5_files' to be an array." << '\n';
+                return;
+            }
+
+            // Iterate through the array
+            for (const auto& hdf5_file : hdf5_files_json["hdf5_files"]) {
+                // Check if the "hdf5_file" key exists and is a string
+                if (!hdf5_file.contains("hdf5_file")) {
+                    TLOG_DEBUG(7)
+                        << "Key 'hdf5_file' not found in JSON array entry."
+                        << '\n';
+                    continue;  // Skip this entry
+                }
+
+                if (!hdf5_file["hdf5_file"].is_string()) {
+                    TLOG_DEBUG(7)
+                        << "Expected 'hdf5_file' to be a string." << '\n';
+                    continue;  // Skip this entry
+                }
+
+                // Add the file name (as a string) to the already_transfer list
+                hdf5_files_already_transfer.push_back(
+                    hdf5_file["hdf5_file"].get<std::string>());
+            }
+
+            // Remove duplicates
+            std::sort(hdf5_files_already_transfer.begin(),
+                      hdf5_files_already_transfer.end());
+            hdf5_files_already_transfer.erase(
+                std::unique(hdf5_files_already_transfer.begin(),
+                            hdf5_files_already_transfer.end()),
+                hdf5_files_already_transfer.end());
+        } catch (const nlohmann::json::exception& e) {
+            // Handle JSON parsing errors
+            TLOG_DEBUG(7) << "JSON parsing error: " << e.what() << '\n';
+            throw std::runtime_error("Failed to parse JSON file: " +
+                                     std::string(e.what()));
         }
-        // remove duplicate in the json file
-        std::sort(hdf5_files_already_transfer.begin(),
-                  hdf5_files_already_transfer.end());
-        hdf5_files_already_transfer.erase(
-            unique(hdf5_files_already_transfer.begin(),
-                   hdf5_files_already_transfer.end()),
-            hdf5_files_already_transfer.end());
-        if (is_save_json) save(json_file);
+    }
+    void WriteJSON(const std::string& filepath) {
+        try {
+            // Extract the filename from the complete path
+            std::filesystem::path path_obj(filepath);
+            std::string filename =
+                path_obj.filename().string();  // e.g., "file1.hdf5"
+
+            // Open the JSON file for reading
+            std::ifstream file_in(json_file);
+            if (!file_in.is_open()) {
+                throw std::runtime_error(
+                    "Failed to open JSON file for reading: " + json_file);
+            }
+
+            // Parse the existing JSON data
+            nlohmann::json json_data;
+            file_in >> json_data;
+            file_in.close();
+
+            // Check if the "hdf5_files" key exists
+            if (!json_data.contains("hdf5_files")) {
+                // If the key doesn't exist, create it as an empty array
+                json_data["hdf5_files"] = nlohmann::json::array();
+            }
+
+            // Validate that "hdf5_files" is an array
+            if (!json_data["hdf5_files"].is_array()) {
+                throw std::runtime_error(
+                    "Expected 'hdf5_files' to be an array in JSON file.");
+            }
+
+            // Check if the filename already exists in the JSON data
+            bool is_duplicate = false;
+            for (const auto& entry : json_data["hdf5_files"]) {
+                if (entry.contains("hdf5_file") &&
+                    entry["hdf5_file"] == filename) {
+                    is_duplicate = true;
+                    break;
+                }
+            }
+
+            // If the filename is not a duplicate, add it to the JSON data
+            if (!is_duplicate) {
+                // Create a new entry for the filename
+                nlohmann::json new_entry;
+                new_entry["hdf5_file"] = filename;
+
+                // Add the new entry to the "hdf5_files" array
+                json_data["hdf5_files"].push_back(new_entry);
+
+                // Open the JSON file for writing
+                std::ofstream file_out(json_file);
+                if (!file_out.is_open()) {
+                    throw std::runtime_error(
+                        "Failed to open JSON file for writing: " + json_file);
+                }
+
+                // Write the updated JSON data to the file
+                file_out << std::setw(4) << json_data << std::endl;
+                file_out.close();
+
+                // Update the in-memory JSON object
+                hdf5_files_json = json_data;
+
+                // Add the filename to the already_transfer list (if not a
+                // duplicate)
+                if (std::find(hdf5_files_already_transfer.begin(),
+                              hdf5_files_already_transfer.end(),
+                              filename) == hdf5_files_already_transfer.end()) {
+                    hdf5_files_already_transfer.push_back(filename);
+
+                    // Remove duplicates (if any)
+                    std::sort(hdf5_files_already_transfer.begin(),
+                              hdf5_files_already_transfer.end());
+                    hdf5_files_already_transfer.erase(
+                        std::unique(hdf5_files_already_transfer.begin(),
+                                    hdf5_files_already_transfer.end()),
+                        hdf5_files_already_transfer.end());
+                }
+            } else {
+                TLOG_DEBUG(7)
+                    << "Filename '" << filename
+                    << "' is already in the JSON file. Skipping duplicate."
+                    << '\n';
+            }
+        } catch (const std::exception& e) {
+            // Handle errors
+            TLOG_DEBUG(7) << "Failed to write JSON file: " << e.what() << '\n';
+            throw;
+        }
     }
 
     void save(const std::string json_file) {
         std::ofstream file_out(json_file);
         nlohmann::json j, new_entry;
         j = hdf5_files_json;
-        // new_entry["hdf5_file"]="coko.hdf5";
-        ////j.insert(j1.begin(),j1.end());
-        // j["hdf5_files"].push_back(new_entry);
 
-        // j["hdf5_files"]["hdf5_file"]="coko.hdf5";
         file_out << std::setw(4) << j << std::endl;
-
         file_out.close();
     }
 
     void print() {
-        TLOG() << "print hdf5 files info"
-               << "\n";
+        TLOG_DEBUG(7) << "print hdf5 files info"
+                      << "\n";
         for (auto file : hdf5_files_to_transfer) {
             std::cout << "HDF5 file to transfer " << file << "\n";
         }
@@ -120,125 +255,6 @@ struct HDF5FromStorage {
         }
     }
 };
-
-// struct ReadWriteJSON
-//{
-//     ReadWriteJSON(const std::string json_file)
-//     {
-//
-//     auto hdf5_files_already_transfer = std::vector<nlohmann::json> {};
-//     //const std::string json_file="hdf5_files_list.json";
-//     nlohmann::json hdf5_files_json;
-//     std::ifstream file_in(json_file);
-//     file_in >> hdf5_files_json;
-//     file_in.close();
-//     auto hdf5_files1=hdf5_files_json["hdf5_files"];
-//     for (auto hdf5_file : hdf5_files1)
-//     {
-//         std::cout<<"hdf5_file
-//         "<<hdf5_file["hdf5_file"].get<std::string>()<<"\n";
-//         //std::string hdf5_file1 = hdf5_file["hdf5_file"].get<std::string()>;
-//         hdf5_files_already_transfer.push_back(hdf5_file["hdf5_file"]);
-//     }
-//
-//     //void save(const std::string json_file)
-//     //return hdf5_files_already_transfer;
-//     }
-// };
-
-// struct JFileManager
-//     static void save(const ReadWriteJSON& rwj,const std::string json_file)
-//     {
-//         std::ofstream file_out(json_file);
-//         nlohmann::json j,new_entry;
-//         j = hdf5_files_json;
-//         new_entry["hdf5_file"]="coko.hdf5";
-//         //j.insert(j1.begin(),j1.end());
-//         j["hdf5_files"].push_back(new_entry);
-//
-//         //j["hdf5_files"]["hdf5_file"]="coko.hdf5";
-//         file_out<< std::setw(4)<<j <<std::endl;
-//
-//         file_out.close();
-//     }
-// }
-
-// struct HDF5ReaderFromStorage1
-//{
-//     auto hdf5_files_to_transfer = std::vector<std::filesystem::path> {};
-//     auto hdf5_files_waiting = std::vector<std::filesystem::path> {};
-//     auto hdf5_files_already_transfer = std::vector<nlohmann::json> {};
-//
-//     const std::string json_file="hdf5_files_list.json";
-//     nlohmann::json hdf5_files_json;
-//     std::ifstream file_in(json_file);
-//     file_in >> hdf5_files_json;
-//     file_in.close();
-//
-//     auto hdf5_files1=hdf5_files_json["hdf5_files"];
-//     for (auto hdf5_file : hdf5_files1)
-//     {
-//         std::cout<<"hdf5_file
-//         "<<hdf5_file["hdf5_file"].get<std::string>()<<"\n";
-//         //std::string hdf5_file1 = hdf5_file["hdf5_file"].get<std::string()>;
-//         hdf5_files_already_transfer.push_back(hdf5_file["hdf5_file"]);
-//     }
-//
-//     const std::filesystem::path
-//     daq_storage_dir{"/lcg/storage19/test-area/dune-v4-spack-integration2/sourcecode/daqconf/config/"};
-//     std::regex ext1(".hdf5");
-//
-//     std::string ext=".hdf5";
-//
-//     for (auto const& entry :
-//     std::filesystem::directory_iterator{daq_storage_dir})
-//     {
-//        //std::cout << entry.path().filename().string() << '\n';
-//        //std::cout << entry.path().extension().string() << '\n';
-//
-//        std::string file_ext = entry.path().extension().string();
-//
-//        if (file_ext == ".hdf5")
-//        {
-//            for (auto item : hdf5_files_already_transfer )
-//            {
-//
-//                if (item != entry.path().filename().string()){
-//                     hdf5_files_to_transfer.push_back(entry.path());
-//                     hdf5_files_json["hdf5_file"]="coko_file.hdf5";
-//                }
-//            }
-//           std::cout << "found list of hdf5 files to datafilter:
-//           "<<entry.path().filename().string() << '\n';
-//        }
-//        if (file_ext == ".writing")
-//        {
-//           hdf5_files_waiting.push_back(entry.path());
-//           std::cout << "found waiting list
-//           :"<<entry.path().filename().string() << '\n';
-//        }
-//     }
-//
-//     std::ofstream file_out("test.json");
-//     nlohmann::json j,new_entry;
-//     j = hdf5_files_json;
-//     new_entry["hdf5_file"]="coko.hdf5";
-//     //j.insert(j1.begin(),j1.end());
-//     j["hdf5_files"].push_back(new_entry);
-//
-//     //j["hdf5_files"]["hdf5_file"]="coko.hdf5";
-//     file_out<< std::setw(4)<<j <<std::endl;
-//
-//     file_out.close();
-//
-//     for (auto file : hdf5_files_to_transfer)
-//     {
-//         std::cout <<file <<"\n";
-//     }
-//
-//
-// }
-
 }  // namespace datafilter
 }  // namespace dunedaq
 #endif

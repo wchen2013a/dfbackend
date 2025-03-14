@@ -4,10 +4,16 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <execution>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 
 #include "datafilter/data_struct.hpp"
+#include "datafilter/node_info.hpp"
 #include "detdataformats/DetID.hpp"
 #include "dfbackend/HDF5FromStorage.hpp"
 //  #include "fddetdataformats/WIBEthFrame.hpp"
@@ -73,6 +79,7 @@ struct TRDispatcherConfig {
         ss << "conn_A" << app_id << "_G" << group_id << "_C" << conn_id << "_";
         return ss.str();
     }
+
     std::string get_group_connection_name(size_t app_id, size_t group_id) {
         std::stringstream ss;
         ss << "conn_A" << app_id << "_G" << group_id << "_.*";
@@ -136,6 +143,7 @@ struct TRDispatcherConfig {
         //            }
         //        }
 
+        // Create the TR tracking socket
         //      for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 13000 + sub;
@@ -150,6 +158,7 @@ struct TRDispatcherConfig {
                 conn_addr, ConnectionType::kSendRecv});
         }
 
+        // Create the trdispatcher socket
         // for (size_t sub = 0; sub < num_apps; ++sub) {
         for (size_t sub = 0; sub < 3; ++sub) {
             auto port = 23000 + sub;
@@ -163,6 +172,19 @@ struct TRDispatcherConfig {
                 ConnectionId{"trdispatcher" + std::to_string(sub), "init_t"},
                 conn_addr, ConnectionType::kSendRecv});
         }
+
+        // Create BookKeeping socket
+        auto port = 83000;
+        auto sub = 0;
+        std::string conn_addrbookkeeping =
+            "tcp://" + server + ":" + std::to_string(port);
+        TLOG() << "Adding control connection "
+               << "bookkeeping" + std::to_string(sub) << " with address "
+               << conn_addrbookkeeping;
+
+        connections.emplace_back(Connection{
+            ConnectionId{"bookkeeping" + std::to_string(sub), "bk_t"},
+            conn_addrbookkeeping, ConnectionType::kSendRecv});
 
         IOManager::get()->configure(queues, connections,
                                     use_connectivity_service,
@@ -264,14 +286,14 @@ struct TRDispatcher {
     }
 
     std::vector<std::filesystem::path> get_hdf5files_from_storage() {
-        TLOG() << "I am in get_hdf5files_from_storage";
+        TLOG_DEBUG(7) << "I am in get_hdf5files_from_storage";
 
         dunedaq::datafilter::HDF5FromStorage s(storage_pathname, json_file);
-        s.print();
+        // s.print();
 
-        for (auto file : s.hdf5_files_to_transfer) {
-            std::cout << "main: files to transfer" << file << "\n";
-        }
+        // for (auto file : s.hdf5_files_to_transfer) {
+        //     std::cout << "main: files to transfer" << file << "\n";
+        // }
         return s.hdf5_files_to_transfer;
     }
 
@@ -521,18 +543,67 @@ struct TRDispatcher {
             sender->send_thread->join();
             sender->send_thread.reset(nullptr);
         }
+        trdispatchers.clear();
+        TLOG() << "TR send done; it will start the next send.";
     }
 
-    // send trigger records from generated hdf5 files.
+    std::string timePointToString(
+        const std::chrono::system_clock::time_point& tp) {
+        // Convert the time_point to a time_t, which represents the time in
+        // seconds since the epoch
+        std::time_t time = std::chrono::system_clock::to_time_t(tp);
+
+        // Convert the time_t to a tm structure for local time
+        std::tm tm = *std::localtime(&time);
+
+        // Use a stringstream to format the time as a string
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+
+        // Return the formatted string
+        return oss.str();
+    }
+
+    // Send trigger records from generated hdf5 files.
     void send_tr_from_hdf5file(size_t dataflow_run_number,
                                pid_t subscriber_pid) {
-        std::ostringstream ss;
+        std::ostringstream oss;
 
+        HDF5RawDataFile h5_file(config.input_h5_filename);
+        auto records = h5_file.get_all_record_ids();
+        auto total_tr = *(std::next(records.begin(), records.size() - 1));
+        // oss << "Sending file: " << config.input_h5_filename << "\n";
+        oss << "Last trigger record: " << int(total_tr.first) << ","
+            << total_tr.second << "\n";
+
+        TLOG() << oss.str();
+        oss.str("");
+        // auto t1 = std::chrono::high_resolution_clock::now();
+        auto t1 = std::chrono::system_clock::now();
+        dunedaq::datafilter::BookKeeping bk_info("bookkeeping0");
+        bk_info.entry_id = timePointToString(t1);
+        bk_info.conn_id = config.get_connection_name(config.my_id, 0, 0);
+        bk_info.from_id = "trdispatcher";
+        dunedaq::datafilter::node_info node_info;
+        bk_info.node = node_info.get_node_info();
+
+        bk_info.tr_header_info.push_back(
+            {"record size", to_string(records.size())});
+
+        /*
+        dunedaq::datafilter::BookKeeping_json bk_info("bookkeeping0");
+        bk_info.bk_info['entry_id'] = timePointToString(t1);
+        bk_info.bk_info['conn_id'] =
+            config.get_connection_name(config.my_id, 0, 0);
+        bk_info.bk_info['from_id'] = "trdispatcher";
+        */
         auto init_sender =
             dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
                 "TR_tracking2");
 
         dunedaq::datafilter::Handshake sent_t1("next_tr");
+        sent_t1.total_tr = int(total_tr.first);
+
         init_sender->send(std::move(sent_t1), Sender::s_block);
 
         //        if (config.next_tr) {
@@ -544,14 +615,15 @@ struct TRDispatcher {
         std::unordered_map<int, std::set<size_t>> completed_receiver_tracking;
         std::mutex tracking_mutex;
 
-        for (size_t group = 0; group < config.num_groups; ++group) {
-            for (size_t conn = 0; conn < config.num_connections_per_group;
-                 ++conn) {
-                auto info = std::make_shared<TRDispatcherInfo>(group, conn);
-                // auto info = std::make_shared<TRDispatcherInfo>(0, 0);
-                trdispatchers.push_back(info);
-            }
-        }
+        // for (size_t group = 0; group < config.num_groups; ++group) {
+        //     for (size_t conn = 0; conn < config.num_connections_per_group;
+        //          ++conn) {
+
+        // auto info = std::make_shared<TRDispatcherInfo>(group, conn);
+        auto info = std::make_shared<TRDispatcherInfo>(0, 0);
+        trdispatchers.push_back(info);
+        //  }
+        // }
 
         TLOG_DEBUG(7) << "Getting publisher objects for each connection";
         std::for_each(
@@ -572,45 +644,55 @@ struct TRDispatcher {
         std::for_each(
             std::execution::par_unseq, std::begin(trdispatchers),
             std::end(trdispatchers),
-            [=, &completed_receiver_tracking,
+            [=, &bk_info, &h5_file, &completed_receiver_tracking,
              &tracking_mutex](std::shared_ptr<TRDispatcherInfo> info) {
                 info->send_thread.reset(new std::thread(
-                    [=, &completed_receiver_tracking, &tracking_mutex]() {
+                    [=, &bk_info, &h5_file, &completed_receiver_tracking,
+                     &tracking_mutex]() {
                         bool complete_received = false;
 
-                        std::ostringstream ss;
+                        std::ostringstream oss;
                         std::this_thread::sleep_for(100ms);
                         while (!complete_received) {
                             TLOG() << "Sender message: trigger record";
 
-                            std::string ifilename = config.input_h5_filename;
-                            TLOG() << "Reading " << ifilename;
+                            // std::string ifilename = config.input_h5_filename;
+                            // TLOG() << "Reading " << ifilename;
 
-                            HDF5RawDataFile h5_file(ifilename);
+                            // HDF5RawDataFile h5_file(ifilename);
                             auto records = h5_file.get_all_record_ids();
-                            ss << "\nNumber of records: " << records.size();
+                            oss << "\nNumber of records: " << records.size();
                             if (records.empty()) {
-                                ss << "\n\nNO TRIGGER RECORDS FOUND";
-                                TLOG() << ss.str();
+                                oss << "\n\nNO TRIGGER RECORDS FOUND";
+                                TLOG() << oss.str();
                                 exit(0);
                             }
                             auto first_rec = *(records.begin());
                             auto last_rec = *(
                                 std::next(records.begin(), records.size() - 1));
 
-                            ss << "\n\tFirst trigger record: "
-                               << first_rec.first << "," << first_rec.second;
-                            ss << "\n\tLast trigger record: " << last_rec.first
-                               << "," << last_rec.second;
+                            oss << "\n\tFirst trigger record: "
+                                << first_rec.first << "," << first_rec.second;
+                            oss << "\n\tLast trigger record: " << last_rec.first
+                                << "," << last_rec.second;
 
-                            TLOG() << ss.str();
-                            ss.str("");
+                            TLOG() << oss.str();
+                            oss.str("");
 
                             for (auto const& rid : records) {
                                 auto record_header_dataset =
                                     h5_file.get_record_header_dataset_path(rid);
                                 auto tr = h5_file.get_trigger_record(rid);
 
+                                config.trigger_number =
+                                    tr.get_fragments_ref()
+                                        .at(0)
+                                        ->get_trigger_number();
+                                config.run_number = tr.get_fragments_ref()
+                                                        .at(0)
+                                                        ->get_run_number();
+                                TLOG() << "Trigger number "
+                                       << config.trigger_number;
                                 // SERIALIZE
                                 auto bytes = dunedaq::serialization::serialize(
                                     tr, dunedaq::serialization::kMsgPack);
@@ -639,10 +721,41 @@ struct TRDispatcher {
                             complete_received = true;
                             break;
                         }  // while loop
+
+                        dunedaq::datafilter::HDF5FromStorage s(storage_pathname,
+                                                               json_file);
+                        s.WriteJSON(config.input_h5_filename);
+
+                        TLOG() << "Send bookkeeping info to datafilter server";
+                        // send book keeping info after the TR is tranfered.
+                        bk_info.file_send_status = "send";
+                        bk_info.tr_status = "send";
+                        bk_info.run_number = config.run_number;
+                        TLOG() << "run number from trdispatcher " << run_number;
+                        bk_info.tr_header_info.push_back(
+                            {"run number", std::to_string(config.run_number)});
+                        bk_info.tr_header_info.push_back(
+                            {"trigger number",
+                             std::to_string(config.trigger_number)});
+                        bk_info.file_send_list.push_back(
+                            config.input_h5_filename);
+                        auto init_bookkeeping_sender = dunedaq::get_iom_sender<
+                            dunedaq::datafilter::BookKeeping>("bookkeeping0");
+                        //// SERIALIZE
+                        // auto bk_bytes = dunedaq::serialization::serialize(
+                        //     bk_info, dunedaq::serialization::kJSON);
+                        //// DESERIALIZE
+                        // auto bk_deserialized =
+                        //     dunedaq::serialization::deserialize<
+                        //         dunedaq::datafilter::BookKeeping_json>(
+                        //         bk_bytes);
+
+                        init_bookkeeping_sender->send(std::move(bk_info),
+                                                      Sender::s_block);
                     }));
             });
 
-        TLOG_DEBUG(7) << "Joining send threads";
+        TLOG() << "Joining send threads";
         for (auto& sender : trdispatchers) {
             sender->send_thread->join();
             sender->send_thread.reset(nullptr);
@@ -685,6 +798,8 @@ struct TRDispatcher {
 }  // namespace datafilter
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Data, "data_t");
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Handshake, "init_t");
+DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::BookKeeping, "bk_t");
+// DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::BookKeeping_json, "bk_t");
 }  // namespace dunedaq
 
 #endif  // DFBACKEND_INCLUDE_TRDISPATCHER_HPP_

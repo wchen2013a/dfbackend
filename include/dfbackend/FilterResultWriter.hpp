@@ -193,6 +193,19 @@ struct FilterResultWriterConfig {
                 conn_addr, ConnectionType::kSendRecv});
         }
 
+        // Create BookKeeping socket
+        auto port = 83000;
+        auto sub = 0;
+        std::string conn_addrbookkeeping =
+            "tcp://" + server + ":" + std::to_string(port);
+        TLOG() << "Adding control connection "
+               << "bookkeeping" + std::to_string(sub) << " with address "
+               << conn_addrbookkeeping;
+
+        connections.emplace_back(Connection{
+            ConnectionId{"bookkeeping" + std::to_string(sub), "bk_t"},
+            conn_addrbookkeeping, ConnectionType::kSendRecv});
+
         IOManager::get()->configure(
             queues, connections, use_connectivity_service,
             std::chrono::milliseconds(publish_interval));
@@ -412,6 +425,23 @@ struct FilterResultWriter {
         return srcid_geoid_map.get<hdf5rawdatafile::SrcIDGeoIDMap>();
     }
 
+    std::string timePointToString(
+        const std::chrono::system_clock::time_point& tp) {
+        // Convert the time_point to a time_t, which represents the time in
+        // seconds since the epoch
+        std::time_t time = std::chrono::system_clock::to_time_t(tp);
+
+        // Convert the time_t to a tm structure for local time
+        std::tm tm = *std::localtime(&time);
+
+        // Use a stringstream to format the time as a string
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+
+        // Return the formatted string
+        return oss.str();
+    }
+
     void receive_tr(size_t run_number1) {
         bool handshake_done = false;
         std::atomic<unsigned int> received_cnt = 0;
@@ -451,6 +481,17 @@ struct FilterResultWriter {
                     std::make_shared<SubscriberInfo>(group, conn));
             }
         }
+
+        auto t1 = std::chrono::system_clock::now();
+        dunedaq::datafilter::BookKeeping bk_info("bookkeeping0");
+        bk_info.entry_id = timePointToString(t1);
+        bk_info.conn_id = config.get_connection_name(config.my_id, 0, 0);
+        bk_info.from_id = "FilterResultWriter";
+
+        //        bk_info['entry_id'] = timePointToString(t1);
+        //        bk_info['conn_id'] = config.get_connection_name(config.my_id,
+        //        0, 0); bk_info['from_id'] = "FilterResultWriter";
+
         // the layout can be obtained from the tranfered TR.
         dunedaq::hdf5libs::hdf5filelayout::data_t flp_json_in;
         dunedaq::hdf5libs::hdf5filelayout::to_json(flp_json_in,
@@ -481,7 +522,7 @@ struct FilterResultWriter {
                     info->msgs_received++;
                     last_received = std::chrono::steady_clock::now();
 
-                    if (info->msgs_received = config.num_messages) {
+                    if (info->msgs_received == config.num_messages) {
                         TLOG() << "Complete condition reached, sending "
                                   "init message for "
                                << info->get_connection_name(config);
@@ -519,6 +560,14 @@ struct FilterResultWriter {
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         after_callback - after_receiver);
             });
+
+        // ACK to datafilter that we succefully received the TR
+        TLOG() << "Send bookkeeping info to datafilter server";
+        bk_info.tr_status = "received";
+        auto init_bookkeeping_sender =
+            dunedaq::get_iom_sender<dunedaq::datafilter::BookKeeping>(
+                "bookkeeping0");
+        init_bookkeeping_sender->send(std::move(bk_info), Sender::s_block);
 
         //        if (config.next_tr) {
         //            auto next_tr_sender =
@@ -679,6 +728,8 @@ struct FilterResultWriter {
 
 }  // namespace datafilter
 DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::Handshake, "init_t");
+DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::BookKeeping, "bk_t");
+// DUNE_DAQ_SERIALIZABLE(dunedaq::datafilter::BookKeeping_json, "bk_t");
 }  // namespace dunedaq
 
 #endif  // DFBACKEND_INCLUDE_FILTERRESULTWRITER_HPP_

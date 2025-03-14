@@ -33,6 +33,7 @@ int main(int argc, char* argv[]) {
     bool help_requested = false;
     bool is_hdf5file = false;
     bool is_from_storage = false;
+    size_t cnt = 0;
     std::string input_h5_filename = config.input_h5_filename;
     namespace po = boost::program_options;
     po::options_description desc("TR Dispatcher");
@@ -102,6 +103,7 @@ int main(int argc, char* argv[]) {
            << "Configuring IOManager";
     // config.configure_iomanager();
 
+    cnt = 0;
     auto trdispatcher =
         std::make_unique<dunedaq::datafilter::TRDispatcher>(config);
 
@@ -111,14 +113,26 @@ int main(int argc, char* argv[]) {
         if (config.num_apps > 1) trdispatcher->init(run);
         // trdispatcher->send(run, forked_pids[0]);
         if (is_from_storage) {
-            files = trdispatcher->get_hdf5files_from_storage();
-            for (auto file : files) {
-                config.input_h5_filename = file;
-                trdispatcher->receive(run, 0, true);
+            while (true) {
+                files = trdispatcher->get_hdf5files_from_storage();
+                if (cnt % 1000000 == 0) {
+                    TLOG() << "IDLE: No new HDF5 files after " << cnt
+                           << "checks.";
+                }
+                if (files.size() > 0) {
+                    for (auto file : files) {
+                        trdispatcher->config.input_h5_filename = file;
+                        TLOG() << "Sending "
+                               << trdispatcher->config.input_h5_filename;
+                        trdispatcher->receive(run, 0, true);
+                        // make sure no duplicate
+                        trdispatcher->trdispatchers.pop_back();
+                    }
+                    cnt = 0;
+                }
+                ++cnt;
             }
-        }
-
-        if (is_hdf5file and !is_from_storage) {
+        } else if (is_hdf5file) {
             trdispatcher->receive(run, 0, true);
         } else {
             trdispatcher->receive(run, 0, false);

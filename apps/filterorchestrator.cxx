@@ -22,6 +22,7 @@ int main(int argc, char* argv[]) {
            << "Configuring IOManager";
 
     bool help_requested = false;
+    size_t cnt = 0;
     namespace po = boost::program_options;
     po::options_description desc("filter orchestrator.");
     desc.add_options()(
@@ -53,22 +54,30 @@ int main(int argc, char* argv[]) {
 
     // config.configure_iomanager();
 
-    auto filterorchestrators =
+    auto filterorchestrator =
         std::make_unique<dunedaq::datafilter::FilterOrchestrator>(config);
 
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "Filter Orchestrator " << config.my_id << ": "
                << "run " << run;
-        if (config.num_apps > 1) filterorchestrators->init(run);
+        if (config.num_apps > 1) filterorchestrator->init(run);
         // filterorchestrator->send(run, forked_pids[0]);
-        filterorchestrators->receive(run, 0);
+        cnt = 0;
+        while (true) {
+            filterorchestrator->receive(run, 0);
+            // filterorchestrator->filterorchestrators.pop_back();
+            if (cnt % 1000000 == 0) {
+                TLOG() << "No Filter Orchestrator activities since " << cnt
+                       << " checkes.";
+            }
+        }
         TLOG() << "Filter Orchestrator " << config.my_id << ": "
                << "run " << run << " complete.";
     }
 
     TLOG() << "Filter Orchestrator" << config.my_id << ": "
            << "Cleaning up";
-    filterorchestrators.reset(nullptr);
+    filterorchestrator.reset(nullptr);
 
     // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "Filter Orchestrator " << config.my_id << ": "

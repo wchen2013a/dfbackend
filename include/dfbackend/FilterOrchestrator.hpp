@@ -266,7 +266,7 @@ struct FilterOrchestrator {
                         after_sender - before_sender);
             });
 
-        auto size = 1024;
+        // auto size = 1024;
 
         TLOG_DEBUG(7) << "Starting publish threads";
         std::for_each(
@@ -344,7 +344,7 @@ struct FilterOrchestrator {
             dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
                 "trdispatcher0");
 
-        std::chrono::milliseconds timeout(100);
+        std::chrono::milliseconds timeout(500);
         dunedaq::datafilter::Handshake sent_t1("trdispatcher0");
         sender_next_tr->send(std::move(sent_t1), timeout);
     }

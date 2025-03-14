@@ -22,6 +22,7 @@ int main(int argc, char* argv[]) {
     dunedaq::datafilter::FilterResultWriterConfig config;
 
     bool help_requested = false;
+    size_t cnt = 0;
     namespace po = boost::program_options;
     po::options_description desc("Filter Result Writer");
     desc.add_options()(
@@ -62,23 +63,26 @@ int main(int argc, char* argv[]) {
            << "Configuring IOManager";
     // config.configure_iomanager();
 
-    auto filterresultwriters =
+    auto filterresultwriter =
         std::make_unique<dunedaq::datafilter::FilterResultWriter>(config);
 
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run;
-        if (config.num_apps > 1) filterresultwriters->init(run);
+        if (config.num_apps > 1) filterresultwriter->init(run);
         // filterresultwriters->send(run, forked_pids[0]);
         // filterresultwriters->send_next_tr(run, 0);
-        filterresultwriters->receive_tr(run);
+        cnt = 0;
+        while (true) {
+            filterresultwriter->receive_tr(run);
+        }
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run << " complete.";
     }
 
     TLOG() << "Filter Result Writer" << config.my_id << ": "
            << "Cleaning up";
-    filterresultwriters.reset(nullptr);
+    filterresultwriter.reset(nullptr);
 
     // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "Filter Result Writer " << config.my_id << ": "

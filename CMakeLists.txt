@@ -67,6 +67,7 @@ daq_add_plugin(DFBackendModule duneDAQModule LINK_LIBRARIES appfwk::appfwk) # Re
 daq_add_application(trdispatcher trdispatcher.cxx LINK_LIBRARIES datafilter::datafilter iomanager::iomanager hdf5libs::hdf5libs logging::logging nlohmann_json::nlohmann_json) 
 daq_add_application(filterorchestrator filterorchestrator.cxx LINK_LIBRARIES datafilter::datafilter iomanager::iomanager hdf5libs::hdf5libs logging::logging nlohmann_json::nlohmann_json) 
 daq_add_application(filterresultwriter filterresultwriter.cxx LINK_LIBRARIES datafilter::datafilter iomanager::iomanager hdf5libs::hdf5libs logging::logging nlohmann_json::nlohmann_json) 
+#daq_add_application(test_HDF5FromStorage test_HDF5FromStorage.cxx LINK_LIBRARIES datafilter::datafilter iomanager::iomanager hdf5libs::hdf5libs logging::logging nlohmann_json::nlohmann_json) 
 
 ##############################################################################
 
