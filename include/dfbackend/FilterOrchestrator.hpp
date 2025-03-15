@@ -346,7 +346,8 @@ struct FilterOrchestrator {
 
         std::chrono::milliseconds timeout(500);
         dunedaq::datafilter::Handshake sent_t1("trdispatcher0");
-        sender_next_tr->send(std::move(sent_t1), timeout);
+        // sender_next_tr->send(std::move(sent_t1), timeout);
+        sender_next_tr->send(std::move(sent_t1), Sender::s_block);
     }
 
     void receive(size_t dataflow_run_number1, pid_t subscriber_pid) {
