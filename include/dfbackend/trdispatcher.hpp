@@ -571,6 +571,7 @@ struct TRDispatcher {
 
         HDF5RawDataFile h5_file(config.input_h5_filename);
         auto records = h5_file.get_all_record_ids();
+        auto records_size = records.size();
         auto total_tr = *(std::next(records.begin(), records.size() - 1));
         // oss << "Sending file: " << config.input_h5_filename << "\n";
         oss << "Last trigger record: " << int(total_tr.first) << ","
@@ -602,7 +603,7 @@ struct TRDispatcher {
                 "TR_tracking2");
 
         dunedaq::datafilter::Handshake sent_t1("next_tr");
-        sent_t1.total_tr = int(total_tr.first);
+        sent_t1.total_tr = int(records_size);
 
         init_sender->send(std::move(sent_t1), Sender::s_block);
 

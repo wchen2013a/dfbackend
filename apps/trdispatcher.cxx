@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
                 files = trdispatcher->get_hdf5files_from_storage();
                 if (cnt % 1000000 == 0) {
                     TLOG() << "IDLE: No new HDF5 files after " << cnt
-                           << "checks.";
+                           << " checks.";
                 }
                 if (files.size() > 0) {
                     for (auto file : files) {
