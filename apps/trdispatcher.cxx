@@ -53,7 +53,11 @@ int main(int argc, char* argv[]) {
         "input filename ")("from_storage,from",
                            po::bool_switch(&is_from_storage),
                            "hdf5 files from storage")(
-        "hdf5,h5", po::bool_switch(&is_hdf5file), "toggle to hdf5 file")(
+        "storage_pathname",
+        po::value<std::string>(&config.storage_pathname)
+            ->default_value(config.storage_pathname),
+        "storage_pathname")("hdf5,h5", po::bool_switch(&is_hdf5file),
+                            "toggle to hdf5 file")(
         "help,h", po::bool_switch(&help_requested), "For help.");
 
     try {

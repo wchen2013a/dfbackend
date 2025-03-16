@@ -66,6 +66,9 @@ struct TRDispatcherConfig {
         "/lcg/storage19/test-area/dune/trigger_records/"
         "swtest_run001039_0000_dataflow0_datawriter_0_20231103T121050.hdf5";
     std::string output_h5_filename = "/opt/tmp/chen/h5_test.hdf5";
+    std::string storage_pathname =
+        "/lcg/storage19/test-area/dune-v4-spack-integration2/sourcecode/"
+        "daqconf/config/";
     size_t write_fragment_type = 1;  // 0 -> TPC; 1 -> Trigger
 
     void configure_connsvc() {
@@ -238,9 +241,6 @@ struct TRDispatcher {
         "swtest_run001039_0000_dataflow0_datawriter_0_20231103T121050.hdf5";
     // HDF5RawDataFile h5_file(config.input_h5_filename);
     // HDF5RawDataFile h5_file1(input_h5_filename);
-    std::string storage_pathname =
-        "/lcg/storage19/test-area/dune-v4-spack-integration2/sourcecode/"
-        "daqconf/config/";
     std::string json_file = "hdf5_files_list.json";
 
     ConnectionId conn_id;
@@ -288,7 +288,8 @@ struct TRDispatcher {
     std::vector<std::filesystem::path> get_hdf5files_from_storage() {
         TLOG_DEBUG(7) << "I am in get_hdf5files_from_storage";
 
-        dunedaq::datafilter::HDF5FromStorage s(storage_pathname, json_file);
+        dunedaq::datafilter::HDF5FromStorage s(config.storage_pathname,
+                                               json_file);
         // s.print();
 
         // for (auto file : s.hdf5_files_to_transfer) {
@@ -723,8 +724,8 @@ struct TRDispatcher {
                             break;
                         }  // while loop
 
-                        dunedaq::datafilter::HDF5FromStorage s(storage_pathname,
-                                                               json_file);
+                        dunedaq::datafilter::HDF5FromStorage s(
+                            config.storage_pathname, json_file);
                         s.WriteJSON(config.input_h5_filename);
 
                         TLOG() << "Send bookkeeping info to datafilter server";
