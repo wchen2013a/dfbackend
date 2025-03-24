@@ -31,6 +31,8 @@ struct HDF5FromStorage {
 
     void HDF5Find() {
         const std::filesystem::path daq_storage_path{storage_pathname};
+        const auto now = std::filesystem::file_time_type::clock::now();
+        const auto one_hour_ago = now - std::chrono::hours(1);
 
         // Validate the storage path
         if (!std::filesystem::exists(daq_storage_path)) {
@@ -43,23 +45,29 @@ struct HDF5FromStorage {
             std::string file_ext = entry.path().extension().string();
 
             if (file_ext == ".hdf5") {
-                TLOG_DEBUG(7) << "found a new hdf5 file: "
-                              << entry.path().parent_path().string() << "/"
-                              << entry.path().filename().string() << '\n';
+                auto mod_time = std::filesystem::last_write_time(entry);
+                bool is_older_than_one_hour = (mod_time < one_hour_ago);
 
-                bool is_already_transferred = false;
-                for (const auto& item : hdf5_files_already_transfer) {
-                    // Compare the filename directly (item is a string)
-                    if (item == entry.path().filename().string()) {
-                        is_already_transferred = true;
-                        break;
+                if (is_older_than_one_hour) {
+                    TLOG_DEBUG(7)
+                        << "found a new hdf5 file older than one hour: "
+                        << entry.path().parent_path().string() << "/"
+                        << entry.path().filename().string() << '\n';
+
+                    bool is_already_transferred = false;
+                    for (const auto& item : hdf5_files_already_transfer) {
+                        // Compare the filename directly (item is a string)
+                        if (item == entry.path().filename().string()) {
+                            is_already_transferred = true;
+                            break;
+                        }
                     }
-                }
 
-                if (!is_already_transferred) {
-                    TLOG() << "To transfer " << entry.path().filename().string()
-                           << '\n';
-                    hdf5_files_to_transfer.push_back(entry.path());
+                    if (!is_already_transferred) {
+                        TLOG() << "To transfer "
+                               << entry.path().filename().string() << '\n';
+                        hdf5_files_to_transfer.push_back(entry.path());
+                    }
                 }
             }
 
@@ -80,7 +88,40 @@ struct HDF5FromStorage {
     }
 
     void ReadJSON() {
-        // Open the JSON file
+        constexpr int max_retries = 10;
+        constexpr int retry_delay_ms = 1000;
+        int attempts = 0;
+        bool file_ready = false;
+
+        // Check if file exists and is not empty
+        while (attempts < max_retries) {
+            if (std::filesystem::exists(json_file) ||
+                std::filesystem::file_size(json_file) > 0) {
+                try {
+                    std::ifstream test_file(json_file);
+                    if (test_file.peek() != std::ifstream::traits_type::eof()) {
+                        file_ready = true;
+                        break;
+                    }
+                } catch (...) {
+                    // Ignore any errors during initial check
+                }
+            }
+            attempts++;
+            TLOG() << "Waiting for JSON file... (attempt " << attempts << "/"
+                   << max_retries << ")" << '\n';
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(retry_delay_ms));
+        }
+
+        if (!file_ready) {
+            throw std::runtime_error("Timeout waiting for JSON file: " +
+                                     json_file);
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        //  Open the JSON file
         std::ifstream file_in(json_file);
         if (!file_in.is_open()) {
             throw std::runtime_error("Failed to open JSON file: " + json_file);
