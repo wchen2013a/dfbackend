@@ -12,7 +12,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "datafilter/data_struct.hpp"
+#include "datafilter/datafilter_structs.hpp"
 #include "datafilter/node_info.hpp"
 #include "detdataformats/DetID.hpp"
 #include "dfbackend/HDF5FromStorage.hpp"
@@ -548,7 +548,7 @@ struct TRDispatcher {
         TLOG() << "TR send done; it will start the next send.";
     }
 
-    std::string timePointToString(
+    std::string time_point_to_string(
         const std::chrono::system_clock::time_point& tp) {
         // Convert the time_point to a time_t, which represents the time in
         // seconds since the epoch
@@ -583,7 +583,7 @@ struct TRDispatcher {
         // auto t1 = std::chrono::high_resolution_clock::now();
         auto t1 = std::chrono::system_clock::now();
         dunedaq::datafilter::BookKeeping bk_info("bookkeeping0");
-        bk_info.entry_id = timePointToString(t1);
+        bk_info.entry_id = time_point_to_string(t1);
         bk_info.conn_id = config.get_connection_name(config.my_id, 0, 0);
         bk_info.from_id = "trdispatcher";
         dunedaq::datafilter::node_info node_info;
@@ -594,7 +594,7 @@ struct TRDispatcher {
 
         /*
         dunedaq::datafilter::BookKeeping_json bk_info("bookkeeping0");
-        bk_info.bk_info['entry_id'] = timePointToString(t1);
+        bk_info.bk_info['entry_id'] = time_point_to_string(t1);
         bk_info.bk_info['conn_id'] =
             config.get_connection_name(config.my_id, 0, 0);
         bk_info.bk_info['from_id'] = "trdispatcher";

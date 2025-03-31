@@ -18,7 +18,7 @@
 #include <execution>
 #include <fstream>
 
-#include "datafilter/data_struct.hpp"
+#include "datafilter/datafilter_structs.hpp"
 #include "iomanager/IOManager.hpp"
 #include "logging/Logging.hpp"
 

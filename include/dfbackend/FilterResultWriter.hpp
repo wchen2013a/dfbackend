@@ -18,7 +18,7 @@
 #include <execution>
 #include <fstream>
 
-#include "datafilter/data_struct.hpp"
+#include "datafilter/datafilter_structs.hpp"
 #include "dfbackend/filterresultwriter/Nljs.hpp"
 #include "dfbackend/filterresultwriter/Structs.hpp"
 #include "dfmessages/TriggerRecord_serialization.hpp"
@@ -51,6 +51,7 @@ struct FilterResultWriterConfig {
     std::string odir = "/opt/tmp/chen";
     std::string output_h5_filename = "/opt/tmp/chen/h5_test.hdf5";
     std::string session_name = "FilterResultWriter test run";
+    std::string ofile_pathname{};
     size_t num_apps = 1;
     size_t num_connections_per_group = 1;
     size_t num_groups = 1;
@@ -118,7 +119,6 @@ struct FilterResultWriterConfig {
     std::string get_pub_init_name(size_t id) {
         return "conn_init_" + std::to_string(id);
     }
-    // std::string get_publisher_init_name() { return "conn_init_.*"; }
 
     void configure_iomanager() {
         setenv("DUNEDAQ_PARTITION", session_name.c_str(), 0);
@@ -273,7 +273,6 @@ struct FilterResultWriter {
         }
     };
 
-    std::vector<std::shared_ptr<FilterResultWriterInfo>> publishers;
     std::vector<std::shared_ptr<SubscriberInfo>> subscribers;
     FilterResultWriterConfig config;
 
@@ -425,7 +424,7 @@ struct FilterResultWriter {
         return srcid_geoid_map.get<hdf5rawdatafile::SrcIDGeoIDMap>();
     }
 
-    std::string timePointToString(
+    std::string time_point_to_string(
         const std::chrono::system_clock::time_point& tp) {
         // Convert the time_point to a time_t, which represents the time in
         // seconds since the epoch
@@ -434,9 +433,18 @@ struct FilterResultWriter {
         // Convert the time_t to a tm structure for local time
         std::tm tm = *std::localtime(&time);
 
+        auto since_epoch = tp.time_since_epoch();
+        auto seconds =
+            std::chrono::duration_cast<std::chrono::seconds>(since_epoch);
+        auto subseconds = since_epoch - seconds;
+        auto nanoseconds =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(subseconds);
+
         // Use a stringstream to format the time as a string
         std::ostringstream oss;
-        oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+        // oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+        oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "."
+            << std::setfill('0') << std::setw(9) << nanoseconds.count();
 
         // Return the formatted string
         return oss.str();
@@ -484,11 +492,11 @@ struct FilterResultWriter {
 
         auto t1 = std::chrono::system_clock::now();
         dunedaq::datafilter::BookKeeping bk_info("bookkeeping0");
-        bk_info.entry_id = timePointToString(t1);
+        bk_info.entry_id = time_point_to_string(t1);
         bk_info.conn_id = config.get_connection_name(config.my_id, 0, 0);
         bk_info.from_id = "FilterResultWriter";
 
-        //        bk_info['entry_id'] = timePointToString(t1);
+        //        bk_info['entry_id'] = time_point_to_string(t1);
         //        bk_info['conn_id'] = config.get_connection_name(config.my_id,
         //        0, 0); bk_info['from_id'] = "FilterResultWriter";
 
@@ -509,16 +517,16 @@ struct FilterResultWriter {
             std::end(subscribers),
             [=, &last_received](std::shared_ptr<SubscriberInfo> info) {
                 auto recv_proc = [=, &last_received](trigger_record_ptr_t& tr) {
-                    auto trigger_timestamp =
+                    config.trigger_timestamp =
                         tr->get_fragments_ref().at(0)->get_trigger_timestamp();
-                    auto trigger_number =
+                    config.trigger_number =
                         tr->get_fragments_ref().at(0)->get_trigger_number();
-                    auto run_number =
+                    config.run_number =
                         tr->get_fragments_ref().at(0)->get_run_number();
                     int file_index = 0;
 
-                    TLOG() << "run_number " << run_number
-                           << ", trigger number: " << trigger_number;
+                    TLOG() << "run_number " << config.run_number
+                           << ", trigger number: " << config.trigger_number;
                     info->msgs_received++;
                     last_received = std::chrono::steady_clock::now();
 
@@ -527,18 +535,19 @@ struct FilterResultWriter {
                                   "init message for "
                                << info->get_connection_name(config);
                         std::string app_name = "test";
-                        std::string ofile_name =
+                        config.ofile_pathname =
                             config.odir + "/" + config.output_h5_filename +
-                            "_" + std::to_string(run_number) + "_" +
-                            std::to_string(trigger_number) + ".hdf5";
-                        TLOG() << "Writing the TR to " << ofile_name;
+                            "_" + std::to_string(config.run_number) + "_" +
+                            std::to_string(config.trigger_number) + ".hdf5";
+                        TLOG() << "Writing the TR to " << config.ofile_pathname;
 
                         // create the file
                         std::unique_ptr<HDF5RawDataFile> h5file_ptr(
-                            new HDF5RawDataFile(
-                                ofile_name, run_number, file_index, app_name,
-                                flp_json_in, srcid_geoid_map, ".writing",
-                                HighFive::File::Overwrite));
+                            new HDF5RawDataFile(config.ofile_pathname,
+                                                config.run_number, file_index,
+                                                app_name, flp_json_in,
+                                                srcid_geoid_map, ".writing",
+                                                HighFive::File::Overwrite));
 
                         h5file_ptr->write(*tr);
                         h5file_ptr.reset();
@@ -564,6 +573,13 @@ struct FilterResultWriter {
         // ACK to datafilter that we succefully received the TR
         TLOG() << "Send bookkeeping info to datafilter server";
         bk_info.tr_status = "received";
+        bk_info.tr_header_info.push_back(
+            {"run_number", std::to_string(config.run_number)});
+        bk_info.tr_header_info.push_back(
+            {"trigger_number", std::to_string(config.trigger_number)});
+        bk_info.tr_header_info.push_back(
+            {"tr_writer_pathname", config.ofile_pathname});
+
         auto init_bookkeeping_sender =
             dunedaq::get_iom_sender<dunedaq::datafilter::BookKeeping>(
                 "bookkeeping0");
@@ -622,108 +638,6 @@ struct FilterResultWriter {
         // sender_next_tr->send(std::move(sent_t1), timeout);
         sender_next_tr->send(std::move(sent_t1), Sender::s_block);
     }
-    /*
-        void send(size_t run_number, pid_t subscriber_pid) {
-            std::ostringstream ss;
-            auto init_receiver =
-                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
-                    "TR_tracking2");
-            std::unordered_map<int, std::set<size_t>>
-       completed_receiver_tracking; std::mutex tracking_mutex;
-
-            //    for (size_t group = 0; group < config.num_groups; ++group) {
-            //      for (size_t conn = 0; conn <
-            //      config.num_connections_per_group;
-            //      ++conn) {
-            // auto info = std::make_shared<FilterResultWriterInfo>(group,
-       conn); auto info = std::make_shared<FilterResultWriterInfo>(0, 0);
-            publishers.push_back(info);
-            //      }
-            //    }
-
-            TLOG_DEBUG(7) << "Getting publisher objects for each connection";
-            std::for_each(
-                std::execution::par_unseq, std::begin(publishers),
-                std::end(publishers),
-                [=](std::shared_ptr<FilterResultWriterInfo> info) {
-                    auto before_sender = std::chrono::steady_clock::now();
-                    info->sender =
-                        dunedaq::get_iom_sender<dunedaq::datafilter::Data>(
-                            config.get_connection_name(config.my_id,
-       info->group_id, info->conn_id)); auto after_sender =
-       std::chrono::steady_clock::now(); info->get_sender_time =
-                        std::chrono::duration_cast<std::chrono::milliseconds>(
-                            after_sender - before_sender);
-                });
-
-            auto size = 1024;
-
-            TLOG_DEBUG(7) << "Starting publish threads";
-            std::for_each(
-                std::execution::par_unseq, std::begin(publishers),
-                std::end(publishers),
-                [=, &completed_receiver_tracking,
-                 &tracking_mutex](std::shared_ptr<FilterResultWriterInfo> info)
-       { info->send_thread.reset(new std::thread(
-                        [=, &completed_receiver_tracking, &tracking_mutex]() {
-                            bool complete_received = false;
-
-                            while (!complete_received) {
-                                // wait for the next TR request
-                                std::atomic<std::chrono::steady_clock::time_point>
-                                    last_received =
-                                        std::chrono::steady_clock::now();
-                                while (std::chrono::duration_cast<
-                                           std::chrono::milliseconds>(
-                                           std::chrono::steady_clock::now() -
-                                           last_received.load())
-                                           .count() < 500) {
-                                    dunedaq::datafilter::Handshake recv;
-                                    recv =
-                                        init_receiver->receive(Receiver::s_block);
-                                    TLOG() << "recv.msg_id " << recv.msg_id;
-                                    std::this_thread::sleep_for(100ms);
-                                    if (recv.msg_id == "wait") {
-                                        //     if (config.next_tr) {
-                                        auto next_tr_sender =
-                                            dunedaq::get_iom_sender<
-                                                dunedaq::datafilter::Handshake>(
-                                                "trdispatcher2");
-                                        TLOG() << "send wait for next
-       instruction"; dunedaq::datafilter::Handshake q("wait");
-                                        next_tr_sender->send(std::move(q),
-                                                             Sender::s_block);
-                                        //      }
-                                        continue;
-                                    } else if (recv.msg_id == "next_tr") {
-                                        TLOG() << "Got next_tr instruction";
-                                        //    if (config.next_tr) {
-                                        auto next_tr_sender =
-                                            dunedaq::get_iom_sender<
-                                                dunedaq::datafilter::Handshake>(
-                                                "trdispatcher2");
-                                        TLOG() << "send next_tr instruction";
-                                        dunedaq::datafilter::Handshake
-       q("next_tr"); next_tr_sender->send(std::move(q), Sender::s_block);
-                                        //    }
-                                        break;
-                                    }
-                                }
-
-                                //}
-                                // force the while loop to end when no trigger
-                                // path left. complete_received = true;
-                            }
-                        }));
-                });
-
-            TLOG_DEBUG(7) << "Joining send threads";
-            for (auto& sender : publishers) {
-                sender->send_thread->join();
-                sender->send_thread.reset(nullptr);
-            }
-        }
-    */
 };
 
 }  // namespace datafilter
