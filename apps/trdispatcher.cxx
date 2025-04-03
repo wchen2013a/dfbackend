@@ -80,29 +80,6 @@ int main(int argc, char* argv[]) {
         config.configure_connsvc();
     }
 
-    //    auto startup_time = std::chrono::steady_clock::now();
-    // start fork process
-    //    std::vector<pid_t> forked_pids;
-    //    for (size_t ii = 0; ii < config.num_apps; ++ii) {
-    //      auto pid = fork();
-    //      std::cout<<"forked pid "<<pid<<" ii "<<ii<<"\n";
-    //      if (pid<0) {
-    //          TLOG()<<"fork error";
-    //          exit(EXIT_FAILURE);
-    //      } else if (pid == 0) { // child
-    //          forked_pids.clear();
-    //          config.my_id = ii;
-    //
-    //          TLOG() << "Dataflow emulator: child process " << config.my_id;
-    //          break;
-    //      } else { //parent
-    //          TLOG() << "Datalfow emulator: parent process " << getpid();
-    //          forked_pids.push_back(pid);
-    //      }
-    //    }
-
-    //      std::this_thread::sleep_until(startup_time + 2s);
-
     TLOG() << "TR Dispatcher " << config.my_id << ": "
            << "Configuring IOManager";
     // config.configure_iomanager();
@@ -115,7 +92,6 @@ int main(int argc, char* argv[]) {
         TLOG() << "TR Dispatcher" << config.my_id << ": "
                << "run " << run;
         if (config.num_apps > 1) trdispatcher->init(run);
-        // trdispatcher->send(run, forked_pids[0]);
         if (is_from_storage) {
             while (true) {
                 files = trdispatcher->get_hdf5files_from_storage();
@@ -153,19 +129,6 @@ int main(int argc, char* argv[]) {
     // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "TR Dispatcher " << config.my_id << ": "
            << "DONE";
-
-    //    if (forked_pids.size() > 0) {
-    //      TLOG() << "Waiting for forked PIDs";
-    //
-    //      for (auto& pid : forked_pids) {
-    //        siginfo_t status;
-    //        auto sts = waitid(P_PID, pid, &status, WEXITED);
-    //
-    //        TLOG_DEBUG(6) << "Forked process " << pid << " exited with status
-    //        " << status.si_status << " (wait status " << sts
-    //                      << ")";
-    //      }
-    //    }
 
     return 0;
 }

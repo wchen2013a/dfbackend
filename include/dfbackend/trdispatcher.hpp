@@ -548,23 +548,6 @@ struct TRDispatcher {
         TLOG() << "TR send done; it will start the next send.";
     }
 
-    std::string time_point_to_string(
-        const std::chrono::system_clock::time_point& tp) {
-        // Convert the time_point to a time_t, which represents the time in
-        // seconds since the epoch
-        std::time_t time = std::chrono::system_clock::to_time_t(tp);
-
-        // Convert the time_t to a tm structure for local time
-        std::tm tm = *std::localtime(&time);
-
-        // Use a stringstream to format the time as a string
-        std::ostringstream oss;
-        oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
-
-        // Return the formatted string
-        return oss.str();
-    }
-
     // Send trigger records from generated hdf5 files.
     void send_tr_from_hdf5file(size_t dataflow_run_number,
                                pid_t subscriber_pid) {
@@ -580,7 +563,9 @@ struct TRDispatcher {
 
         TLOG() << oss.str();
         oss.str("");
-        // auto t1 = std::chrono::high_resolution_clock::now();
+        dunedaq::datafilter::time_point_to_string time_point_to_string(
+            dunedaq::datafilter::Precision::NANOSECONDS);
+
         auto t1 = std::chrono::system_clock::now();
         dunedaq::datafilter::BookKeeping bk_info("bookkeeping0");
         bk_info.entry_id = time_point_to_string(t1);
@@ -591,6 +576,9 @@ struct TRDispatcher {
 
         bk_info.tr_header_info.push_back(
             {"record size", to_string(records.size())});
+        auto file_index = h5_file.get_attribute<size_t>("file_index");
+        bk_info.file_attributes_info.push_back(
+            {"file_index", std::to_string(file_index)});
 
         /*
         dunedaq::datafilter::BookKeeping_json bk_info("bookkeeping0");
@@ -694,7 +682,8 @@ struct TRDispatcher {
                                                         .at(0)
                                                         ->get_run_number();
                                 TLOG() << "Trigger number "
-                                       << config.trigger_number;
+                                       << config.trigger_number
+                                       << " run_number " << config.run_number;
                                 // SERIALIZE
                                 auto bytes = dunedaq::serialization::serialize(
                                     tr, dunedaq::serialization::kMsgPack);
@@ -724,12 +713,13 @@ struct TRDispatcher {
                             break;
                         }  // while loop
 
+                        // Write the transfert file pathname to json file
                         dunedaq::datafilter::HDF5FromStorage s(
                             config.storage_pathname, json_file);
                         s.WriteJSON(config.input_h5_filename);
 
-                        TLOG() << "Send bookkeeping info to datafilter server";
                         // send book keeping info after the TR is tranfered.
+                        TLOG() << "Send bookkeeping info to datafilter server";
                         bk_info.file_send_status = "send";
                         bk_info.tr_status = "send";
                         bk_info.run_number = config.run_number;
@@ -741,7 +731,7 @@ struct TRDispatcher {
                              std::to_string(config.trigger_number)});
                         bk_info.file_send_list.push_back(
                             config.input_h5_filename);
-                        auto init_bookkeeping_sender = dunedaq::get_iom_sender<
+                        auto bookkeeping_sender = dunedaq::get_iom_sender<
                             dunedaq::datafilter::BookKeeping>("bookkeeping0");
                         //// SERIALIZE
                         // auto bk_bytes = dunedaq::serialization::serialize(
@@ -752,8 +742,8 @@ struct TRDispatcher {
                         //         dunedaq::datafilter::BookKeeping_json>(
                         //         bk_bytes);
 
-                        init_bookkeeping_sender->send(std::move(bk_info),
-                                                      Sender::s_block);
+                        bookkeeping_sender->send(std::move(bk_info),
+                                                 Sender::s_block);
                     }));
             });
 

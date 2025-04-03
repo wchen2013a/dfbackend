@@ -66,11 +66,15 @@ int main(int argc, char* argv[]) {
     auto filterresultwriter =
         std::make_unique<dunedaq::datafilter::FilterResultWriter>(config);
 
+    // Create a thread for receive_attrs
+    std::thread attrs_thread(
+        &dunedaq::datafilter::FilterResultWriter::receive_attrs,
+        filterresultwriter.get());
+
     for (size_t run = 0; run < config.num_runs; ++run) {
         TLOG() << "Filter Result Writer " << config.my_id << ": "
                << "run " << run;
         if (config.num_apps > 1) filterresultwriter->init(run);
-        // filterresultwriters->send(run, forked_pids[0]);
         // filterresultwriters->send_next_tr(run, 0);
         cnt = 0;
         while (true) {
@@ -82,24 +86,15 @@ int main(int argc, char* argv[]) {
 
     TLOG() << "Filter Result Writer" << config.my_id << ": "
            << "Cleaning up";
+
+    // Wait for the receive_attrs thread to finish
+    if (attrs_thread.joinable()) {
+        attrs_thread.join();
+    }
     filterresultwriter.reset(nullptr);
 
     // dunedaq::iomanager::IOManager::get()->reset();
     TLOG() << "Filter Result Writer " << config.my_id << ": "
            << "DONE";
-
-    //    if (forked_pids.size() > 0) {
-    //        TLOG() << "Waiting for forked PIDs";
-    //
-    //        for (auto& pid : forked_pids) {
-    //            siginfo_t status;
-    //            auto sts = waitid(P_PID, pid, &status, WEXITED);
-    //
-    //            TLOG_DEBUG(6) << "Forked process " << pid << " exited with
-    //            status " << status.si_status << " (wait status " << sts
-    //                          << ")";
-    //        }
-    //    }
-
     return 0;
 }

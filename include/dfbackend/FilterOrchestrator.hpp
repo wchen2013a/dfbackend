@@ -335,7 +335,7 @@ struct FilterOrchestrator {
         }
     }
 
-    void send_next_tr(size_t run_number, pid_t subscriber_pid) {
+    void request_next_tr(size_t run_number, pid_t subscriber_pid) {
         bool handshake_done = false;
 
         std::atomic<unsigned int> sent_cnt = 0;
@@ -344,7 +344,7 @@ struct FilterOrchestrator {
             dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
                 "trdispatcher0");
 
-        std::chrono::milliseconds timeout(500);
+        // std::chrono::milliseconds timeout(500);
         dunedaq::datafilter::Handshake sent_t1("trdispatcher0");
         // sender_next_tr->send(std::move(sent_t1), timeout);
         sender_next_tr->send(std::move(sent_t1), Sender::s_block);
@@ -373,7 +373,7 @@ struct FilterOrchestrator {
 
         cb_receiver->remove_callback();
 
-        send_next_tr(dataflow_run_number1, subscriber_pid);
+        request_next_tr(dataflow_run_number1, subscriber_pid);
     }
 };
 

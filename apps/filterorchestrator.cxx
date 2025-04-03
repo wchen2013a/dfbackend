@@ -83,18 +83,5 @@ int main(int argc, char* argv[]) {
     TLOG() << "Filter Orchestrator " << config.my_id << ": "
            << "DONE";
 
-    //    if (forked_pids.size() > 0) {
-    //      TLOG() << "Waiting for forked PIDs";
-    //
-    //      for (auto& pid : forked_pids) {
-    //        siginfo_t status;
-    //        auto sts = waitid(P_PID, pid, &status, WEXITED);
-    //
-    //        TLOG_DEBUG(6) << "Forked process " << pid << " exited with status
-    //        " << status.si_status << " (wait status " << sts
-    //                      << ")";
-    //      }
-    //    }
-
     return 0;
 }

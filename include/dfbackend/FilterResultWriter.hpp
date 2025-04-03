@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <execution>
 #include <fstream>
+#include <memory>
 
 #include "datafilter/datafilter_structs.hpp"
 #include "dfbackend/filterresultwriter/Nljs.hpp"
@@ -193,18 +194,19 @@ struct FilterResultWriterConfig {
                 conn_addr, ConnectionType::kSendRecv});
         }
 
-        // Create BookKeeping socket
-        auto port = 83000;
-        auto sub = 0;
-        std::string conn_addrbookkeeping =
-            "tcp://" + server + ":" + std::to_string(port);
-        TLOG() << "Adding control connection "
-               << "bookkeeping" + std::to_string(sub) << " with address "
-               << conn_addrbookkeeping;
+        // Create Bookkeeping socket
+        for (size_t sub = 0; sub < 2; ++sub) {
+            auto port = 83000 + sub;
+            std::string conn_addrbookkeeping =
+                "tcp://" + server + ":" + std::to_string(port);
+            TLOG() << "Adding control connection "
+                   << "bookkeeping" + std::to_string(sub) << " with address "
+                   << conn_addrbookkeeping;
 
-        connections.emplace_back(Connection{
-            ConnectionId{"bookkeeping" + std::to_string(sub), "bk_t"},
-            conn_addrbookkeeping, ConnectionType::kSendRecv});
+            connections.emplace_back(Connection{
+                ConnectionId{"bookkeeping" + std::to_string(sub), "bk_t"},
+                conn_addrbookkeeping, ConnectionType::kSendRecv});
+        }
 
         IOManager::get()->configure(
             queues, connections, use_connectivity_service,
@@ -282,6 +284,8 @@ struct FilterResultWriter {
 
     std::string path_header1;
 
+    std::atomic<size_t> m_file_index{0};
+
     void init(size_t run_number) {
         TLOG_DEBUG(5) << "Getting init sender";
         // auto init_sender =
@@ -317,6 +321,24 @@ struct FilterResultWriter {
             init_sender1->send(std::move(q), Sender::s_block);
             break;
         }
+    }
+
+    void set_file_index(uint32_t file_index) {
+        m_file_index.store(file_index, std::memory_order_release);
+    }
+    size_t get_file_index() const {
+        return m_file_index.load(std::memory_order_acquire);
+    }
+
+    std::string generate_hdf5file_pathname(std::string file_pathname_prefix,
+                                           int run_number, int file_index,
+                                           int trigger_number) {
+        std::ostringstream filename_oss;
+        filename_oss << file_pathname_prefix << "_" << std::setw(6)
+                     << std::setfill('0') << run_number << "_" << std::setw(4)
+                     << std::setfill('0') << file_index << "_" << trigger_number
+                     << ".hdf5";
+        return filename_oss.str();
     }
 
     dunedaq::hdf5libs::hdf5filelayout::FileLayoutParams
@@ -424,30 +446,50 @@ struct FilterResultWriter {
         return srcid_geoid_map.get<hdf5rawdatafile::SrcIDGeoIDMap>();
     }
 
-    std::string time_point_to_string(
-        const std::chrono::system_clock::time_point& tp) {
-        // Convert the time_point to a time_t, which represents the time in
-        // seconds since the epoch
-        std::time_t time = std::chrono::system_clock::to_time_t(tp);
+    void receive_attrs() {
+        TLOG() << "Receive attrs==================================";
+        std::atomic<unsigned int> received_cnt{0};
+        std::atomic<bool> is_done{false};
 
-        // Convert the time_t to a tm structure for local time
-        std::tm tm = *std::localtime(&time);
+        auto cb_receiver =
+            dunedaq::get_iom_receiver<dunedaq::datafilter::BookKeeping>(
+                "bookkeeping1");
+        if (!cb_receiver) {
+            TLOG() << "Failed to get bookkeeping receiver";
+            return;
+        }
 
-        auto since_epoch = tp.time_since_epoch();
-        auto seconds =
-            std::chrono::duration_cast<std::chrono::seconds>(since_epoch);
-        auto subseconds = since_epoch - seconds;
-        auto nanoseconds =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(subseconds);
+        std::function<void(dunedaq::datafilter::BookKeeping)> str_receiver_cb =
+            [&](dunedaq::datafilter::BookKeeping bk) {
+                ++received_cnt;
+                if (received_cnt == 1) {
+                    if (auto it = std::find_if(bk.file_attributes_info.begin(),
+                                               bk.file_attributes_info.end(),
+                                               [](const auto& p) {
+                                                   return p.first ==
+                                                          "file_index";
+                                               });
+                        it != bk.file_attributes_info.end()) {
+                        // m_file_index = it->second;
+                        set_file_index(std::stoi(it->second));
+                    }
+                }
+                TLOG() << "Processing bookkeeping # " << received_cnt
+                       << " from " << bk.from_id << " (Run: " << bk.run_number
+                       << " file index: " << get_file_index() << ")";
+            };
 
-        // Use a stringstream to format the time as a string
-        std::ostringstream oss;
-        // oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
-        oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "."
-            << std::setfill('0') << std::setw(9) << nanoseconds.count();
-
-        // Return the formatted string
-        return oss.str();
+        TLOG() << "Registering callback...";
+        cb_receiver->add_callback(str_receiver_cb);
+        TLOG() << "Callback registered, entering main loop";
+        while (!is_done) {
+            if (received_cnt == 1) {
+                TLOG() << "Check received_cnt" << received_cnt;
+                is_done = true;
+            }
+        }
+        TLOG() << "Cleaning up receiver";
+        cb_receiver->remove_callback();
     }
 
     void receive_tr(size_t run_number1) {
@@ -490,6 +532,8 @@ struct FilterResultWriter {
             }
         }
 
+        dunedaq::datafilter::time_point_to_string time_point_to_string(
+            dunedaq::datafilter::Precision::NANOSECONDS);
         auto t1 = std::chrono::system_clock::now();
         dunedaq::datafilter::BookKeeping bk_info("bookkeeping0");
         bk_info.entry_id = time_point_to_string(t1);
@@ -523,9 +567,10 @@ struct FilterResultWriter {
                         tr->get_fragments_ref().at(0)->get_trigger_number();
                     config.run_number =
                         tr->get_fragments_ref().at(0)->get_run_number();
-                    int file_index = 0;
+                    size_t file_index = get_file_index();
 
                     TLOG() << "run_number " << config.run_number
+                           << " file index: " << file_index
                            << ", trigger number: " << config.trigger_number;
                     info->msgs_received++;
                     last_received = std::chrono::steady_clock::now();
@@ -535,10 +580,17 @@ struct FilterResultWriter {
                                   "init message for "
                                << info->get_connection_name(config);
                         std::string app_name = "test";
-                        config.ofile_pathname =
-                            config.odir + "/" + config.output_h5_filename +
-                            "_" + std::to_string(config.run_number) + "_" +
-                            std::to_string(config.trigger_number) + ".hdf5";
+                        // config.ofile_pathname =
+                        //     config.odir + "/" + config.output_h5_filename +
+                        //     "_" + std::to_string(config.run_number) + "_" +
+                        //     std::to_string(file_index) + "_" +
+                        //     std::to_string(config.trigger_number) + ".hdf5";
+
+                        std::string file_pathname_prefix =
+                            config.odir + "/" + config.output_h5_filename;
+                        config.ofile_pathname = generate_hdf5file_pathname(
+                            file_pathname_prefix, config.run_number, file_index,
+                            config.trigger_number);
                         TLOG() << "Writing the TR to " << config.ofile_pathname;
 
                         // create the file
@@ -573,6 +625,7 @@ struct FilterResultWriter {
         // ACK to datafilter that we succefully received the TR
         TLOG() << "Send bookkeeping info to datafilter server";
         bk_info.tr_status = "received";
+        bk_info.run_number = config.run_number;
         bk_info.tr_header_info.push_back(
             {"run_number", std::to_string(config.run_number)});
         bk_info.tr_header_info.push_back(
