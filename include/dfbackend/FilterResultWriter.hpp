@@ -474,7 +474,7 @@ struct FilterResultWriter {
                         set_file_index(std::stoi(it->second));
                     }
                 }
-                TLOG() << "Processing bookkeeping # " << received_cnt
+                TLOG() << "Processing bookkeeping attributes # " << received_cnt
                        << " from " << bk.from_id << " (Run: " << bk.run_number
                        << " file index: " << get_file_index() << ")";
             };

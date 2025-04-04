@@ -577,16 +577,20 @@ struct TRDispatcher {
         bk_info.tr_header_info.push_back(
             {"record size", to_string(records.size())});
         auto file_index = h5_file.get_attribute<size_t>("file_index");
+        TLOG() << "File index :" << file_index;
+        bk_info.run_number = h5_file.get_attribute<size_t>("run_number");
         bk_info.file_attributes_info.push_back(
             {"file_index", std::to_string(file_index)});
 
-        /*
-        dunedaq::datafilter::BookKeeping_json bk_info("bookkeeping0");
-        bk_info.bk_info['entry_id'] = time_point_to_string(t1);
-        bk_info.bk_info['conn_id'] =
-            config.get_connection_name(config.my_id, 0, 0);
-        bk_info.bk_info['from_id'] = "trdispatcher";
-        */
+        // Send the file attributes first: file_index, run_number. The
+        // FilterResultWriter needs to know it before receiving the trigger
+        // record.
+        auto bookkeeping_sender =
+            dunedaq::get_iom_sender<dunedaq::datafilter::BookKeeping>(
+                "bookkeeping0");
+        bookkeeping_sender->send(std::move(bk_info), Sender::s_block);
+
+        // Handshake with datafilter.
         auto init_sender =
             dunedaq::get_iom_sender<dunedaq::datafilter::Handshake>(
                 "TR_tracking2");
@@ -595,12 +599,6 @@ struct TRDispatcher {
         sent_t1.total_tr = int(records_size);
 
         init_sender->send(std::move(sent_t1), Sender::s_block);
-
-        //        if (config.next_tr) {
-        //            auto init_receiver =
-        //                dunedaq::get_iom_receiver<dunedaq::datafilter::Handshake>(
-        //                    "TR_tracking2");
-        //        }
 
         std::unordered_map<int, std::set<size_t>> completed_receiver_tracking;
         std::mutex tracking_mutex;
@@ -754,6 +752,7 @@ struct TRDispatcher {
         }
     }
 
+    // Receive handshake from FilterOrchestrator
     void receive(size_t dataflow_run_number1, pid_t subscriber_pid,
                  bool is_hdf5file) {
         bool handshake_done = false;
