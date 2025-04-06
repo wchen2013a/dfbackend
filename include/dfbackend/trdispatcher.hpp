@@ -581,6 +581,7 @@ struct TRDispatcher {
         bk_info.run_number = h5_file.get_attribute<size_t>("run_number");
         bk_info.file_attributes_info.push_back(
             {"file_index", std::to_string(file_index)});
+        bk_info.file_send_list.push_back(config.input_h5_filename);
 
         // Send the file attributes first: file_index, run_number. The
         // FilterResultWriter needs to know it before receiving the trigger
